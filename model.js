@@ -99,22 +99,22 @@ function plan(inp) {
       });
     }
 
-    // 3. CPF LIFE payouts, leftover OA, interest.
+    // 3. CPF LIFE payouts, leftover OA, interest. Payouts run for both lives: to the household horizon, not each person's own deathAge.
     people.forEach((p, i) => {
       const a = ages[i];
-      if (a >= inp.deathAge) return;
-      if (a >= 65 && p.out.ra65 === null) {
+      if (a >= 65 && a < inp.deathAge && p.out.ra65 === null) {
         p.out.ra65 = p.ra;
         let m = payoutAt65(p.ra) * 0.98 * (p.female ? 0.95 : 1); // 0.98 calibrates to CPF's published FRS/ERS payouts
         if (inp.plan === 'escalating') m *= 1380 / 1780;
         p.out.monthlyStart = m * Math.pow(1.06, Math.max(0, inp.startAge - 65));
       }
-      if (a >= inp.startAge && p.out.ra65 !== null) {
+      if (p.out.ra65 !== null && a >= inp.startAge) {
         if (p.out.startYear === null) p.out.startYear = y;
         let m = p.out.monthlyStart;
         if (inp.plan === 'escalating') m *= Math.pow(1.02, y - p.out.startYear);
         p.out.payoutByYear[y] = m * 12;
       }
+      if (a >= inp.deathAge) return;
       if (inp.countOA && p.out.oaLumpYear === null && a >= 55 && y >= yRet) {
         p.out.oaLump = p.oa; p.out.oaLumpYear = y; p.oa = 0;
       }
