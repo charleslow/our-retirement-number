@@ -35,6 +35,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-body); 
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 22px; }
 h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+.titlerow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.yr { font: 700 15px var(--font-body); color: var(--bg); background: var(--accent); border-radius: 999px; padding: 4px 12px; }
 .sub { color: var(--ink-2); margin: 4px 0 0; max-width: 62ch; }
 .units { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--panel); }
 .units button { font: 600 13px var(--font-body); border: 0; background: transparent; color: var(--ink-2); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
@@ -49,7 +51,7 @@ fieldset:last-of-type { border-bottom: 0; }
 legend { font: 700 12px var(--font-body); text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); padding: 0; margin-bottom: 10px; }
 .row { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 10px; align-items: center; margin-bottom: 8px; }
 .row label, .row .lbl { font-size: 14px; color: var(--ink-2); }
-.row small, .tg small { display: block; color: var(--ink-3); font-size: 12px; line-height: 1.3; }
+.row small, .pair small, .tg small { display: block; color: var(--ink-3); font-size: 12px; line-height: 1.3; }
 .field { position: relative; }
 .field input, .field select { width: 100%; font: 600 15px var(--font-body); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; text-align: right; }
 .field select { text-align: left; }
@@ -129,6 +131,8 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; letter
 .cpf dt.grp { grid-column: 1 / -1; font: 700 11px var(--font-body); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-top: 8px; }
 .cpf dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .cpf dd.hl { color: var(--accent); font-weight: 700; }
+.chip { display: inline-block; font: 700 10px var(--font-body); letter-spacing: 0.05em; color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; margin-left: 6px; white-space: nowrap; }
+.cpf dt .chip.today { color: var(--accent); border-color: var(--accent); }
 
 .tablewrap { overflow-x: auto; margin: 0 -4px; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -137,9 +141,8 @@ th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 th:first-child, td:first-child { text-align: left; }
 details { margin-top: 14px; }
 summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15px; }
-.fine { font-size: 13px; color: var(--ink-3); max-width: 80ch; padding-left: 18px; margin: 0; }
-.fine li { margin-bottom: 4px; }
-.fine a { color: var(--ink-2); }
+.fineprint { font-size: 13px; color: var(--ink-3); }
+.fineprint a { color: var(--ink-2); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -148,8 +151,11 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
 <div class="wrap">
   <header class="top">
     <div>
-      <h1>Our Retirement Number</h1>
-      <p class="sub">How much cash we need on top of CPF: to top up our Retirement Accounts at 55, and to fund our retirement income.</p>
+      <div class="titlerow">
+        <h1>Our Retirement Number</h1>
+        <span class="yr" id="yr"></span>
+      </div>
+      <p class="sub">Cash to build on top of CPF: RA top-ups at 55, plus retirement income.</p>
     </div>
     <div class="units" role="group" aria-label="Show amounts in">
       <button type="button" id="u-today" aria-pressed="true">Today's dollars</button>
@@ -159,7 +165,7 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
 
   <div class="grid">
     <aside class="inputs" aria-label="Your inputs">
-      <p class="note-ex">Starts with example figures. Replace them with yours; they're remembered in this browser only.</p>
+      <p class="note-ex">Starts with example figures. Edits are remembered in this browser.</p>
       <fieldset>
         <legend>Goal</legend>
         <div class="row"><label for="target">Monthly income in retirement<small>Combined, in today's dollars</small></label><div class="field pre"><input id="target" type="number" min="0" step="100"></div></div>
@@ -171,7 +177,7 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
       <fieldset>
         <legend>CPF today</legend>
         <div class="pair"><span></span><span class="h">Me</span><span class="h">Wife</span></div>
-        <div class="pair"><label for="y-age">Age now</label><div class="field"><input id="y-age" type="number" min="18" max="64" step="1"></div><div class="field"><input id="w-age" type="number" min="18" max="64" step="1" aria-label="Wife age now"></div></div>
+        <div class="pair"><label for="y-yob">Birth year<small>age now: <span id="ages-now"></span></small></label><div class="field"><input id="y-yob" type="number" min="1900" max="2100" step="1"></div><div class="field"><input id="w-yob" type="number" min="1900" max="2100" step="1" aria-label="Wife birth year"></div></div>
         <div class="pair"><label for="y-oa">Ordinary (OA)</label><div class="field pre"><input id="y-oa" type="number" min="0" step="1000"></div><div class="field pre"><input id="w-oa" type="number" min="0" step="1000" aria-label="Wife OA"></div></div>
         <div class="pair"><label for="y-sa">Special (SA), or Retirement (RA) if 55+</label><div class="field pre"><input id="y-sa" type="number" min="0" step="1000"></div><div class="field pre"><input id="w-sa" type="number" min="0" step="1000" aria-label="Wife SA or RA"></div></div>
         <div class="pair"><label for="y-ma">MediSave (MA)</label><div class="field pre"><input id="y-ma" type="number" min="0" step="1000"></div><div class="field pre"><input id="w-ma" type="number" min="0" step="1000" aria-label="Wife MA"></div></div>
@@ -187,11 +193,11 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
           <p class="effect" id="fx-plan"></p>
         </div>
         <div class="strat">
-          <label class="tg" for="optOA"><span><span class="t">Move spare OA into SA</span><small>Each year until 55, fill own SA up to the current Full Retirement Sum, then the spouse's. Only for OA not needed for housing; transfers can't be undone.</small></span><span class="sw"><input id="optOA" type="checkbox" role="switch"><span></span></span></label>
+          <label class="tg" for="optOA"><span><span class="t">Move spare OA into SA</span><small>Until 55, fill your SA up to the current Full Retirement Sum, then your spouse's. Keep out OA needed for housing; transfers can't be undone.</small></span><span class="sw"><input id="optOA" type="checkbox" role="switch"><span></span></span></label>
           <p class="effect" id="fx-opt"></p>
         </div>
         <div class="strat">
-          <label class="tg" for="ers"><span><span class="t">Top up RA to the ERS at 55</span><small>At each person's 55, fill the RA to that year's Enhanced Retirement Sum: OA first, then cash for the rest.</small></span><span class="sw"><input id="ers" type="checkbox" role="switch"><span></span></span></label>
+          <label class="tg" for="ers"><span><span class="t">Top up RA to the ERS at 55</span><small>At each 55, fill the RA to that year's Enhanced Retirement Sum: OA first, then cash.</small></span><span class="sw"><input id="ers" type="checkbox" role="switch"><span></span></span></label>
           <p class="effect" id="fx-ers"></p>
         </div>
       </fieldset>
@@ -199,7 +205,7 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
         <legend>Assumptions</legend>
         <div class="row"><label for="startAge">CPF LIFE payouts start at</label><div class="field"><select id="startAge"><option>65</option><option>66</option><option>67</option><option>68</option><option>69</option><option>70</option></select></div></div>
         <div class="row"><label for="rsGrowth">Retirement Sum growth after 2027</label><div class="field suf"><input id="rsGrowth" type="number" min="0" max="8" step="0.1"></div></div>
-        <label class="check"><input id="countOA" type="checkbox"> <span>Spend OA left over after 55 in retirement (untick if it's committed to a mortgage)</span></label>
+        <label class="check"><input id="countOA" type="checkbox"> <span>Spend leftover OA in retirement (untick if it's for the mortgage)</span></label>
       </fieldset>
       <button type="button" class="reset" id="reset">Reset to example figures</button>
     </aside>
@@ -234,32 +240,21 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
       </section>
 
       <section class="card">
-        <h2>CPF projection with no new contributions</h2>
-        <p class="lede">Balances only earn CPF interest (OA 2.5%, SA/RA/MA 4%, plus extra interest on the first $60,000). At 55 the SA, then OA, fill a Retirement Account up to that year's Full Retirement Sum. Amounts are in the dollars of the year shown.</p>
+        <h2>CPF projection, no new contributions</h2>
+        <p class="lede">Balances earn CPF interest only (OA 2.5%, SA/RA/MA 4%, plus extra on the first $60,000). At 55, SA then OA form the Retirement Account, up to that year's Full Retirement Sum. Every group is tagged with the year its dollars are worth: <span class="chip">2051&nbsp;$</span> means 2051 dollars, <span class="chip">future&nbsp;$</span> means the year each transfer happens, <span class="chip today">today&nbsp;$</span> means money in your pocket today.</p>
         <div class="cpfgrid">
           <div class="cpf" style="border-top-color:var(--s1)"><h3><i style="background:var(--s1)"></i>Me</h3><dl id="cpf-you"></dl></div>
           <div class="cpf" style="border-top-color:var(--s2)"><h3><i style="background:var(--s2)"></i>Wife</h3><dl id="cpf-wife"></dl></div>
         </div>
       </section>
-
-      <section class="card">
-        <h2>How it's calculated</h2>
-        <ul class="fine">
-          <li>Savings needed at retirement is the smallest pot that pays the income gap every year until both of you reach the plan-until age without running out. The gap is your target income (grown by inflation) minus CPF LIFE payouts and any leftover OA you choose to spend.</li>
-          <li>The ERS top-up happens in the year each person turns 55. The Enhanced Retirement Sum is twice the Full Retirement Sum: $440,800 in 2026 and $456,400 in 2027, then growing at the rate you set. Leftover OA is used first and cash covers the rest. The cash part is the first headline figure; it is separate from the retirement savings.</li>
-          <li>Moving OA into SA: each year until 55, OA moves into your own SA up to that year's Full Retirement Sum, then into your spouse's SA if they are under 55. The giver keeps the Basic Retirement Sum. SA above the Full Retirement Sum at 55 returns to the OA.</li>
-          <li>CPF LIFE payouts use CPF Board's 2026 Standard Plan table (for example, $220,400 in RA at 55 gives about $1,780 a month from 65; $440,800 gives about $3,440). Women's payouts are taken as 5% lower. Deferring adds about 6% a year. The Escalating Plan starts about 22% lower and rises 2% a year. Actual payouts can be adjusted for interest rates and life expectancy.</li>
-          <li>Spending is assumed to stay the same after one spouse dies, which is conservative. CPF LIFE payouts stop at each person's plan-until age here, though in reality they continue for life. MediSave is left for healthcare and not counted.</li>
-          <li>This is a planning estimate, not financial advice. Check figures with CPF's <a href="https://www.cpf.gov.sg/member/infohub/educational-resources/your-complete-guide-to-retirement-planning-in-singapore" target="_blank" rel="noopener">retirement planning guide</a> and the Retirement Payout Planner after logging in.</li>
-        </ul>
-      </section>
+      <footer class="fineprint">Planning estimate, not advice. Cross-check with CPF's <a href="https://www.cpf.gov.sg/member/infohub/educational-resources/your-complete-guide-to-retirement-planning-in-singapore" target="_blank" rel="noopener">retirement planning guide</a> and the Retirement Payout Planner.</footer>
     </main>
   </div>
 </div>
 
 <script>
-// Household retirement demand model (Singapore / CPF). Annual steps, nominal dollars, year 0 = 2026.
-const BASE_YEAR = 2026;
+// Household retirement demand model (Singapore / CPF). Annual steps, nominal dollars, year 0 = now.
+const BASE_YEAR = new Date().getFullYear();
 
 // Announced: FRS 2026 $220,400, 2027 $228,200; grows at g after. BRS = FRS/2, ERS = 2 x FRS.
 function retSum(kind, year, g) {
@@ -418,7 +413,7 @@ if (typeof module !== 'undefined') module.exports = { plan, payoutAt65, retSum }
 
 
 const DEFAULTS = { target: 6000, retireAge: 65, deathAge: 90, inflation: 2.5, rPost: 3,
-  'y-age': 45, 'w-age': 43, 'y-oa': 120000, 'w-oa': 80000, 'y-sa': 150000, 'w-sa': 100000, 'y-ma': 70000, 'w-ma': 60000,
+  'y-yob': BASE_YEAR - 45, 'w-yob': BASE_YEAR - 43, 'y-oa': 120000, 'w-oa': 80000, 'y-sa': 150000, 'w-sa': 100000, 'y-ma': 70000, 'w-ma': 60000,
   plan: 'standard', optOA: false, ers: true, startAge: '65', rsGrowth: 3.5, countOA: true };
 const KEY = 'retirement-number-v2', OLD_KEY = 'retirement-number-v1';
 const CARRY = ['target', 'deathAge', 'inflation', 'rPost', 'y-age', 'w-age', 'y-oa', 'w-oa', 'y-sa', 'w-sa', 'y-ma', 'w-ma', 'plan', 'startAge', 'rsGrowth', 'countOA'];
@@ -446,6 +441,8 @@ function load(useSaved = true) {
     try { const uu = localStorage.getItem(KEY + '-units'); if (uu) units = uu; } catch (e) {}
   }
   saved = saved || {};
+  // Old saves stored ages; keep them as birth years.
+  for (const k of ['y-age', 'w-age']) if (saved[k] != null) { saved[k.replace('age', 'yob')] = BASE_YEAR - saved[k]; delete saved[k]; }
   for (const id of ids) setVal(id, id in saved ? saved[id] : DEFAULTS[id]);
 }
 function save() {
@@ -455,14 +452,14 @@ function save() {
 const num = (id, d = 0) => { const v = parseFloat(document.getElementById(id).value); return isFinite(v) ? v : d; };
 
 function readInputs() {
-  const clampAge = a => Math.min(64, Math.max(18, Math.round(a)));
+  const clampYob = y => Math.min(BASE_YEAR - 18, Math.max(BASE_YEAR - 64, Math.round(y)));
   return {
     target: Math.max(0, num('target')), retireAge: Math.round(num('retireAge', 65)), deathAge: Math.round(num('deathAge', 90)),
     inflation: num('inflation') / 100, rPost: num('rPost') / 100, rsGrowth: num('rsGrowth') / 100,
     startAge: parseInt(document.getElementById('startAge').value, 10), plan: getVal('plan'),
     countOA: getVal('countOA'), optOA: getVal('optOA'), ers: getVal('ers'),
-    you: { age: clampAge(num('y-age', 45)), oa: Math.max(0, num('y-oa')), sa: Math.max(0, num('y-sa')), ma: Math.max(0, num('y-ma')) },
-    wife: { age: clampAge(num('w-age', 43)), oa: Math.max(0, num('w-oa')), sa: Math.max(0, num('w-sa')), ma: Math.max(0, num('w-ma')) }
+    you: { age: BASE_YEAR - clampYob(num('y-yob', BASE_YEAR - 45)), oa: Math.max(0, num('y-oa')), sa: Math.max(0, num('y-sa')), ma: Math.max(0, num('y-ma')) },
+    wife: { age: BASE_YEAR - clampYob(num('w-yob', BASE_YEAR - 43)), oa: Math.max(0, num('w-oa')), sa: Math.max(0, num('w-sa')), ma: Math.max(0, num('w-ma')) }
   };
 }
 
@@ -478,6 +475,9 @@ function render() {
   I = readInputs();
   P = plan(I);
   save();
+  document.getElementById('yr').textContent = BASE_YEAR;
+  document.getElementById('yr').setAttribute('aria-label', 'Figures as of ' + BASE_YEAR);
+  document.getElementById('ages-now').textContent = `${I.you.age} / ${I.wife.age}`;
   document.getElementById('u-today').setAttribute('aria-pressed', units === 'today');
   document.getElementById('u-future').setAttribute('aria-pressed', units === 'future');
 
@@ -488,44 +488,42 @@ function render() {
     const val = c => units === 'today' ? c.today : c.nominal;
     document.getElementById('ers-big').textContent = fmt(val(P.cash55[0]) + val(P.cash55[1]));
     split.innerHTML = `<dt>Me, at 55 in ${P.cash55[0].y}</dt><dd>${fmt(val(P.cash55[0]))}</dd><dt>Wife, at 55 in ${P.cash55[1].y}</dt><dd>${fmt(val(P.cash55[1]))}</dd>`;
-    document.getElementById('ers-note').textContent = `In ${uLabel()}. Fills each RA to that year's Enhanced Retirement Sum (about ${fmt(P.you.ersCohort)} and ${fmt(P.wife.ersCohort)}) after using leftover OA.`;
+    document.getElementById('ers-note').textContent = `In ${uLabel()}. Fills each RA to that year's ERS (about ${fmt(P.you.ersCohort)} / ${fmt(P.wife.ersCohort)}) after leftover OA.`;
   } else {
     hb.classList.add('off');
     document.getElementById('ers-big').textContent = '—';
     split.innerHTML = '';
-    document.getElementById('ers-note').textContent = 'Not used. Turn on "Top up RA to the ERS at 55" to see the cash needed.';
+    document.getElementById('ers-note').textContent = 'Off. Turn on the ERS top-up to see the cash needed.';
   }
 
   // Headline 2: savings at retirement
   document.getElementById('ret-eyebrow').textContent = `Savings needed at retirement, age ${I.retireAge} (${P.yRet})`;
   document.getElementById('ret-big').textContent = fmt(units === 'today' ? P.potToday : P.pot);
   const other = units === 'today' ? `${fmt(P.pot)} in ${P.yRet} dollars` : `${fmt(P.potToday)} in today's dollars`;
-  document.getElementById('ret-note').textContent = `In ${uLabel()} (${other}). Funds ${fmt(I.target)} a month in today's money until ${P.yEnd - 1}, on top of CPF LIFE${I.countOA ? ' and leftover OA' : ''}.`;
+  document.getElementById('ret-note').textContent = `In ${uLabel()}; ${other}. Funds ${fmt(I.target)} a month in today's money until ${P.yEnd - 1}, on top of CPF LIFE${I.countOA ? ' and leftover OA' : ''}.`;
 
   document.getElementById('total-line').innerHTML = I.ers
-    ? `Total cash to build: <b>${fmt(P.totalToday)}</b> in today's dollars (${fmt(P.cash55Today)} for the ERS top-ups plus ${fmt(P.potToday)} at retirement).`
-    : `Total cash to build: <b>${fmt(P.potToday)}</b> in today's dollars, all needed at retirement.`;
+    ? `Total to build: <b>${fmt(P.totalToday)}</b> in today's dollars (${fmt(P.cash55Today)} ERS top-ups, ${fmt(P.potToday)} at retirement).`
+    : `Total to build: <b>${fmt(P.totalToday)}</b> in today's dollars, all at retirement.`;
 
   renderEffects(); renderPost(); renderCPF();
 }
 
 function variant(mod) { const J = JSON.parse(JSON.stringify(I)); mod(J); return plan(J); }
 function renderEffects() {
-  // Escalating vs Standard
   {
     const S = variant(J => { J.plan = 'standard'; }), E = variant(J => { J.plan = 'escalating'; });
-    document.getElementById('fx-plan').innerHTML = `Escalating vs Standard: savings at retirement ${chg(E.potToday - S.potToday)}${I.ers ? '; ERS top-up unchanged' : ''}. Escalating starts lower but rises 2% a year.`;
+    document.getElementById('fx-plan').innerHTML = `Escalating vs Standard: savings at retirement ${chg(E.potToday - S.potToday)}. Starts lower, rises 2% a year.`;
   }
   {
     const on = variant(J => { J.optOA = true; }), off = variant(J => { J.optOA = false; });
-    let t = `With this on: savings at retirement ${chg(on.potToday - off.potToday)}`;
-    if (I.ers) t += `; ERS top-up cash ${chg(on.cash55Today - off.cash55Today)}`;
-    t += ` (today's $).`;
-    document.getElementById('fx-opt').innerHTML = t;
+    let t = `Savings at retirement ${chg(on.potToday - off.potToday)}`;
+    if (I.ers) t += `, ERS top-up cash ${chg(on.cash55Today - off.cash55Today)}`;
+    document.getElementById('fx-opt').innerHTML = t + `. Today's dollars.`;
   }
   {
     const on = variant(J => { J.ers = true; }), off = variant(J => { J.ers = false; });
-    document.getElementById('fx-ers').innerHTML = `With this on: savings at retirement ${chg(on.potToday - off.potToday)}, but <b>${fmt(on.cash55Today)}</b> cash is needed at 55. Total cash ${chg(on.totalToday - off.totalToday)} (today's $).`;
+    document.getElementById('fx-ers').innerHTML = `Savings at retirement ${chg(on.potToday - off.potToday)}, but ${fmt(on.cash55Today)} cash needed at 55. Total cash ${chg(on.totalToday - off.totalToday)}. Today's dollars.`;
   }
 }
 
@@ -534,8 +532,8 @@ function renderPost() {
   const gapYears = rows.filter(r => r.cYou + r.cWife === 0).length;
   document.getElementById('inc-h').textContent = `Where each month's ${fmt(I.target)} comes from`;
   document.getElementById('inc-lede').textContent =
-    `Monthly income by year, in ${uLabel()}. ${gapYears ? `The first ${gapYears} year${gapYears > 1 ? 's are' : ' is'} paid entirely from savings because CPF LIFE starts at ${I.startAge}. ` : ''}` +
-    (I.plan === 'standard' ? 'Standard Plan payouts are fixed in dollars, so inflation slowly shrinks their share and savings cover more each year.' : 'Escalating Plan payouts rise 2% a year, so they hold their value better against inflation.');
+    `Monthly income by year, in ${uLabel()}. ${gapYears ? `The first ${gapYears} year${gapYears > 1 ? 's come' : ' comes'} from savings only; CPF LIFE starts at ${I.startAge}. ` : ''}` +
+    (I.plan === 'standard' ? 'Standard payouts are fixed, so savings cover more as prices rise.' : 'Escalating payouts rise 2% a year, closer to prices.');
   barChart(document.getElementById('chart-inc'), rows.map(r => ({ y: r.y, a: u(r.cYou, r.y) / 12, b: u(r.cWife, r.y) / 12, c: u(Math.max(0, r.need - r.cYou - r.cWife), r.y) / 12, ages: `${r.ageYou} / ${r.ageWife}` })));
   let h = `<thead><tr><th>Year</th><th>Ages</th><th>Need / yr</th><th>My CPF LIFE</th><th>Wife's CPF LIFE</th>${I.countOA ? '<th>OA spent</th>' : ''}<th>From savings</th><th>Savings at start</th></tr></thead><tbody>`;
   rows.forEach(r => {
@@ -545,17 +543,18 @@ function renderPost() {
 }
 
 function renderCPF() {
+  const chip = (txt, today) => ` <span class="chip${today ? ' today' : ''}">${txt}</span>`;
   const block = (o, person) => {
     const r = [];
-    const add = (a, b, cls = '') => r.push(`<dt>${a}</dt><dd class="${cls}">${b}</dd>`);
-    const grp = t => r.push(`<dt class="grp">${t}</dt>`);
+    const add = (a, b, cls = '', c = null) => r.push(`<dt>${a}${c ? chip(c, true) : ''}</dt><dd class="${cls}">${b}</dd>`);
+    const grp = (t, c) => r.push(`<dt class="grp">${t}${c ? chip(c) : ''}</dt>`);
     if (I.optOA && person.age < 55) {
-      grp('Before 55');
+      grp('Before 55', 'future $');
       add('OA moved into own SA', fmt(o.oaToOwnSA));
       if (o.oaToSpouse > 0) add("OA moved to spouse's SA", fmt(o.oaToSpouse));
       if (o.fromSpouse > 0) add("Received from spouse's OA", fmt(o.fromSpouse));
     }
-    grp(person.age < 55 ? `At 55 (${o.y55})` : 'Now');
+    grp(person.age < 55 ? `At 55 (${o.y55})` : 'Now', person.age < 55 ? `${o.y55} $` : `${BASE_YEAR} $`);
     if (person.age < 55) add('Full Retirement Sum that year', fmt(o.frsCohort));
     add(person.age < 55 ? 'RA formed from SA and OA' : 'RA today', fmt(o.raFormed || 0));
     if (I.ers) {
@@ -563,11 +562,14 @@ function renderCPF() {
       add('Top-up from OA', fmt(o.oaToRA));
       add('Top-up in cash', fmt(o.cashTopUp), 'hl');
     }
-    grp(`At 65 (${o.y65})`);
+    grp(`At 65 (${o.y65})`, `${o.y65} $`);
     add('RA balance', fmt(o.ra65 || 0));
     add(`CPF LIFE from ${I.startAge}, per month`, fmt(o.monthlyStart));
-    add("…same in today's dollars", fmt(o.startYear ? o.monthlyStart / P.defl(o.startYear) : 0));
-    if (I.countOA) add(`OA left to spend${o.oaLumpYear ? ' (' + o.oaLumpYear + ')' : ''}`, fmt(o.oaLump));
+    add(`In ${BASE_YEAR} dollars`, fmt(o.startYear ? o.monthlyStart / P.defl(o.startYear) : 0), 'hl', `${BASE_YEAR} $`);
+    if (I.countOA) {
+      grp(o.oaLumpYear ? `At retirement (${o.oaLumpYear})` : 'At retirement', o.oaLumpYear ? `${o.oaLumpYear} $` : 'future $');
+      add('OA left to spend', fmt(o.oaLump));
+    }
     return r.join('');
   };
   document.getElementById('cpf-you').innerHTML = block(P.you, I.you);
@@ -625,6 +627,7 @@ function barChart(box, data) {
 
 /* ---------- wiring ---------- */
 load();
+for (const id of ['y-yob', 'w-yob']) { const el = document.getElementById(id); el.min = BASE_YEAR - 64; el.max = BASE_YEAR - 18; }
 const aside = document.querySelector('aside.inputs');
 aside.addEventListener('input', render);
 aside.addEventListener('change', render);
