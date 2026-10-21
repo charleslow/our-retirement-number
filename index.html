@@ -132,7 +132,7 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; letter
 .cpf dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .cpf dd.hl { color: var(--accent); font-weight: 700; }
 .chip { display: inline-block; font: 700 10px var(--font-body); letter-spacing: 0.05em; color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; margin-left: 6px; white-space: nowrap; }
-.cpf dt .chip.today { color: var(--accent); border-color: var(--accent); }
+.chip.today { color: var(--accent); border-color: var(--accent); }
 
 .tablewrap { overflow-x: auto; margin: 0 -4px; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -241,7 +241,7 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
 
       <section class="card">
         <h2>CPF projection, no new contributions</h2>
-        <p class="lede">Balances earn CPF interest only (OA 2.5%, SA/RA/MA 4%, plus extra on the first $60,000). At 55, SA then OA form the Retirement Account, up to that year's Full Retirement Sum. Every group is tagged with the year its dollars are worth: <span class="chip">2051&nbsp;$</span> means 2051 dollars, <span class="chip">future&nbsp;$</span> means the year each transfer happens, <span class="chip today">today&nbsp;$</span> means money in your pocket today.</p>
+        <p class="lede">Balances earn CPF interest only (OA 2.5%, SA/RA/MA 4%, plus extra on the first $60,000). At 55, SA then OA form the Retirement Account, up to that year's Full Retirement Sum. Every figure is tagged with the year its dollars are worth: <span class="chip">2051&nbsp;$</span> means 2051 dollars, <span class="chip today" id="chip-now">today&nbsp;$</span> means money in your pocket today.</p>
         <div class="cpfgrid">
           <div class="cpf" style="border-top-color:var(--s1)"><h3><i style="background:var(--s1)"></i>Me</h3><dl id="cpf-you"></dl></div>
           <div class="cpf" style="border-top-color:var(--s2)"><h3><i style="background:var(--s2)"></i>Wife</h3><dl id="cpf-wife"></dl></div>
@@ -477,6 +477,7 @@ function render() {
   save();
   document.getElementById('yr').textContent = BASE_YEAR;
   document.getElementById('yr').setAttribute('aria-label', 'Figures as of ' + BASE_YEAR);
+  document.getElementById('chip-now').textContent = BASE_YEAR + ' $';
   document.getElementById('ages-now').textContent = `${I.you.age} / ${I.wife.age}`;
   document.getElementById('u-today').setAttribute('aria-pressed', units === 'today');
   document.getElementById('u-future').setAttribute('aria-pressed', units === 'future');
@@ -543,32 +544,34 @@ function renderPost() {
 }
 
 function renderCPF() {
-  const chip = (txt, today) => ` <span class="chip${today ? ' today' : ''}">${txt}</span>`;
+  const chip = yr => ` <span class="chip${yr === BASE_YEAR ? ' today' : ''}">${yr} $</span>`;
   const block = (o, person) => {
     const r = [];
-    const add = (a, b, cls = '', c = null) => r.push(`<dt>${a}${c ? chip(c, true) : ''}</dt><dd class="${cls}">${b}</dd>`);
-    const grp = (t, c) => r.push(`<dt class="grp">${t}${c ? chip(c) : ''}</dt>`);
+    const add = (a, b, yr, cls = '') => r.push(`<dt>${a}</dt><dd class="${cls}">${b}${chip(yr)}</dd>`);
+    const grp = t => r.push(`<dt class="grp">${t}</dt>`);
+    const yTopUp = person.age < 55 ? o.y55 : BASE_YEAR;
     if (I.optOA && person.age < 55) {
-      grp('Before 55', 'future $');
-      add('OA moved into own SA', fmt(o.oaToOwnSA));
-      if (o.oaToSpouse > 0) add("OA moved to spouse's SA", fmt(o.oaToSpouse));
-      if (o.fromSpouse > 0) add("Received from spouse's OA", fmt(o.fromSpouse));
+      grp('Before 55');
+      add('OA moved into own SA', fmt(o.oaToOwnSA), BASE_YEAR);
+      if (o.oaToSpouse > 0) add("OA moved to spouse's SA", fmt(o.oaToSpouse), BASE_YEAR);
+      if (o.fromSpouse > 0) add("Received from spouse's OA", fmt(o.fromSpouse), BASE_YEAR);
     }
-    grp(person.age < 55 ? `At 55 (${o.y55})` : 'Now', person.age < 55 ? `${o.y55} $` : `${BASE_YEAR} $`);
-    if (person.age < 55) add('Full Retirement Sum that year', fmt(o.frsCohort));
-    add(person.age < 55 ? 'RA formed from SA and OA' : 'RA today', fmt(o.raFormed || 0));
+    grp(person.age < 55 ? `At 55 (${o.y55})` : 'Now');
+    if (person.age < 55) add('Full Retirement Sum that year', fmt(o.frsCohort), o.y55);
+    add(person.age < 55 ? 'RA formed from SA and OA' : 'RA today', fmt(o.raFormed || 0), yTopUp);
     if (I.ers) {
-      add('Enhanced Retirement Sum that year', fmt(o.ersCohort || 0));
-      add('Top-up from OA', fmt(o.oaToRA));
-      add('Top-up in cash', fmt(o.cashTopUp), 'hl');
+      add('Enhanced Retirement Sum that year', fmt(o.ersCohort || 0), yTopUp);
+      add('Top-up from OA', fmt(o.oaToRA), yTopUp);
+      add('Top-up in cash', fmt(o.cashTopUp), yTopUp, 'hl');
     }
-    grp(`At 65 (${o.y65})`, `${o.y65} $`);
-    add('RA balance', fmt(o.ra65 || 0));
-    add(`CPF LIFE from ${I.startAge}, per month`, fmt(o.monthlyStart));
-    add(`In ${BASE_YEAR} dollars`, fmt(o.startYear ? o.monthlyStart / P.defl(o.startYear) : 0), 'hl', `${BASE_YEAR} $`);
+    grp(`At 65 (${o.y65})`);
+    add('RA balance', fmt(o.ra65 || 0), o.y65);
+    add(`CPF LIFE from ${I.startAge}, per month`, fmt(o.monthlyStart), o.y65 + I.startAge - 65);
+    add("In today's dollars", fmt(o.startYear ? o.monthlyStart / P.defl(o.startYear) : 0), BASE_YEAR, 'hl');
     if (I.countOA) {
-      grp(o.oaLumpYear ? `At retirement (${o.oaLumpYear})` : 'At retirement', o.oaLumpYear ? `${o.oaLumpYear} $` : 'future $');
-      add('OA left to spend', fmt(o.oaLump));
+      const yLump = o.oaLumpYear || P.yRet;
+      grp(`At retirement (${yLump})`);
+      add('OA left to spend', fmt(o.oaLump), yLump);
     }
     return r.join('');
   };
