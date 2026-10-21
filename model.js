@@ -1,157 +1,353 @@
-// Household retirement demand model (Singapore / CPF). Annual steps, nominal dollars, year 0 = now.
-const BASE_YEAR = new Date().getFullYear();
+// Household retirement demand model (Singapore / CPF). Annual steps, nominal dollars.
+// Every statutory figure comes from the cpf data files (see data/ and update.md);
+// this file contains only rules and arithmetic.
+'use strict';
 
-// Announced: FRS 2026 $220,400, 2027 $228,200; grows at g after. BRS = FRS/2, ERS = 2 x FRS.
-function retSum(kind, year, g) {
-  const frs = year <= 2026 ? 220400 : year === 2027 ? 228200 : 228200 * Math.pow(1 + g, year - 2027);
-  return kind === 'BRS' ? frs / 2 : kind === 'ERS' ? frs * 2 : frs;
-}
+// createModel(cpfRules, cpfLife, { baseYear }) -> { plan, retirementSum, payoutAtReferenceAge }
+// cpfRules: parsed data/cpf_rules.yaml. cpfLife: parsed data/cpf_life_<year>.yaml.
+// baseYear: override for testing; defaults to the current calendar year.
+function createModel(cpfRules, cpfLife, options) {
+  const baseYear = (options && options.baseYear) || new Date().getFullYear();
 
-// CPF LIFE Standard Plan, male, payout from 65, vs RA balance at 65 (CPF Board reference table, 2026).
-const PAYOUT_PTS = [[82400, 490], [170100, 950], [227900, 1250], [330100, 1780], [445600, 2380], [650100, 3440]];
-function payoutAt65(ra65) {
-  if (ra65 <= 0) return 0;
-  const r = PAYOUT_PTS.map(([a, p]) => [a, p / a]);
-  let ratio = r[r.length - 1][1];
-  if (ra65 <= r[0][0]) ratio = r[0][1];
-  else for (let i = 0; i < r.length - 1; i++) {
-    if (ra65 >= r[i][0] && ra65 <= r[i + 1][0]) {
-      const f = (ra65 - r[i][0]) / (r[i + 1][0] - r[i][0]);
-      ratio = r[i][1] + f * (r[i + 1][1] - r[i][1]);
-      break;
-    }
-  }
-  return ra65 * ratio;
-}
+  const raFormationAge = cpfRules.ages.ra_formation_age;
+  const lifeReferenceAge = cpfRules.ages.life_reference_age;
+  const ordinaryGrowth = 1 + cpfRules.interest.ordinary_account_pct / 100;
+  const specialGrowth = 1 + cpfRules.interest.special_account_pct / 100;
+  const extraInterestOrdinaryCap = cpfRules.extra_interest.ordinary_account_cap;
+  const extraInterestTiersBeforeRa = cpfRules.extra_interest.before_ra_formation
+    .map(tier => [tier.tier_balance, tier.extra_pct / 100]);
+  const extraInterestTiersAfterRa = cpfRules.extra_interest.after_ra_formation
+    .map(tier => [tier.tier_balance, tier.extra_pct / 100]);
+  const lifeTablePoints = cpfLife.table.points.map(point => [point.ra_balance, point.monthly_payout]);
+  const femalePayoutFactor = 1 - cpfLife.adjustments.female_discount_pct / 100;
+  const deferralFactorPerYear = 1 + cpfLife.adjustments.deferral_uplift_pct_per_year / 100;
+  const tableCalibrationFactor = cpfLife.adjustments.table_calibration_factor;
+  const escalatingStartRatio = cpfLife.escalating_plan.escalating_frs_monthly
+    / cpfLife.escalating_plan.standard_frs_monthly;
+  const escalatingGrowthPerYear = 1 + cpfLife.escalating_plan.annual_increase_pct / 100;
 
-// Extra interest: balances in priority order, tiers [[size, rate], ...]. Returns extra interest per account.
-function tiered(amounts, tiers) {
-  const out = amounts.map(() => 0);
-  let ti = 0, left = tiers[0][0];
-  for (let i = 0; i < amounts.length; i++) {
-    let a = amounts[i];
-    while (a > 0 && ti < tiers.length) {
-      const take = Math.min(a, left);
-      out[i] += take * tiers[ti][1];
-      a -= take; left -= take;
-      if (left <= 0) { ti++; if (ti < tiers.length) left = tiers[ti][0]; }
-    }
-  }
-  return out;
-}
-
-// inp: {target, retireAge, deathAge, inflation, rPost, rsGrowth, startAge, plan, countOA, optOA, ers,
-//       you:{age,oa,sa,ma}, wife:{age,oa,sa,ma}}
-function plan(inp) {
-  const g = inp.rsGrowth;
-  const yRet = BASE_YEAR + Math.max(0, inp.retireAge - inp.you.age);
-  const yEnd = BASE_YEAR + Math.max(inp.deathAge - inp.you.age, inp.deathAge - inp.wife.age); // exclusive
-  const defl = y => Math.pow(1 + inp.inflation, y - BASE_YEAR);
-
-  const people = [inp.you, inp.wife].map((p, idx) => ({
-    female: idx === 1, age0: p.age, oa: p.oa, sa: p.sa, ma: p.ma, ra: 0, formed: false,
-    out: { y55: null, frsCohort: null, ersCohort: null, raFormed: null, oaToOwnSA: 0, oaToSpouse: 0, fromSpouse: 0,
-      oaToRA: 0, cashTopUp: 0, raAfterTopUp: null, ra65: null, y65: BASE_YEAR + 65 - p.age, monthlyStart: 0,
-      startYear: null, oaLump: 0, oaLumpYear: null, payoutByYear: {} }
-  }));
-  for (const p of people) if (p.age0 >= 55) {
-    p.ra = p.sa; p.sa = 0; p.formed = true;
-    Object.assign(p.out, { raFormed: p.ra, y55: BASE_YEAR, frsCohort: retSum('FRS', BASE_YEAR, g) });
+  // Retirement sums: the last announced FRS at or before the year applies exactly;
+  // later years grow from it at the given rate. BRS = FRS x fraction, ERS = FRS x multiple.
+  function retirementSum(kind, year, growthRate) {
+    const announcedRows = cpfRules.retirement_sums.announced;
+    let governingRow = announcedRows[0];
+    for (const row of announcedRows) if (row.year <= year) governingRow = row;
+    const fullSum = governingRow.frs * Math.pow(1 + growthRate, year - governingRow.year);
+    if (kind === 'BRS') return fullSum * cpfRules.retirement_sums.brs_fraction_of_frs;
+    if (kind === 'ERS') return fullSum * cpfRules.retirement_sums.ers_multiple_of_frs;
+    return fullSum;
   }
 
-  for (let y = BASE_YEAR; y < yEnd; y++) {
-    const frs = retSum('FRS', y, g), brs = frs / 2, ers = frs * 2;
-    const ages = people.map(p => p.age0 + (y - BASE_YEAR));
+  function yearlyRetirementSums(year, growthRate) {
+    return {
+      full: retirementSum('FRS', year, growthRate),
+      basic: retirementSum('BRS', year, growthRate),
+      enhanced: retirementSum('ERS', year, growthRate),
+    };
+  }
 
-    // 1. At 55: SA then OA fill the RA up to the FRS; SA above the FRS goes to OA. Then optional ERS top-up: OA first, then cash.
-    people.forEach((p, i) => {
-      const a = ages[i];
-      if (a >= inp.deathAge) return;
-      if (!p.formed && a >= 55) {
-        Object.assign(p.out, { y55: y, frsCohort: frs });
-        const fromSA = Math.min(p.sa, frs);
-        p.ra = fromSA; p.oa += p.sa - fromSA; p.sa = 0;
-        const fromOA = Math.min(p.oa, frs - p.ra);
-        p.ra += fromOA; p.oa -= fromOA;
-        p.formed = true; p.out.raFormed = p.ra;
-      }
-      if (inp.ers && p.formed && p.out.raAfterTopUp === null && a < 65) {
-        p.out.ersCohort = ers;
-        const need = Math.max(0, ers - p.ra);
-        const fromOA = Math.min(p.oa, need);
-        p.oa -= fromOA; p.out.oaToRA = fromOA;
-        p.out.cashTopUp = need - fromOA;
-        p.ra += need; p.out.raAfterTopUp = p.ra;
-      }
-    });
-
-    // 2. Optional: move spare OA into SA each year, own SA first, then the spouse's, up to the current FRS.
-    if (inp.optOA) {
-      people.forEach((p, i) => {
-        if (ages[i] < 55) { const t = Math.max(0, Math.min(p.oa, frs - p.sa)); p.oa -= t; p.sa += t; p.out.oaToOwnSA += t; }
-      });
-      people.forEach((p, i) => {
-        const q = people[1 - i];
-        if (ages[1 - i] >= 55 || p.oa <= 0 || ages[i] >= inp.deathAge) return;
-        const keep = Math.max(0, brs - (p.formed ? p.ra : p.sa)); // giver keeps the BRS
-        const t = Math.max(0, Math.min(p.oa - keep, frs - q.sa));
-        if (t > 0) { p.oa -= t; q.sa += t; p.out.oaToSpouse += t; q.out.fromSpouse += t; }
-      });
-    }
-
-    // 3. CPF LIFE payouts, leftover OA, interest.
-    people.forEach((p, i) => {
-      const a = ages[i];
-      if (a >= inp.deathAge) return;
-      if (a >= 65 && p.out.ra65 === null) {
-        p.out.ra65 = p.ra;
-        let m = payoutAt65(p.ra) * 0.98 * (p.female ? 0.95 : 1); // 0.98 calibrates to CPF's published FRS/ERS payouts
-        if (inp.plan === 'escalating') m *= 1380 / 1780;
-        p.out.monthlyStart = m * Math.pow(1.06, Math.max(0, inp.startAge - 65));
-      }
-      if (a >= inp.startAge && p.out.ra65 !== null) {
-        if (p.out.startYear === null) p.out.startYear = y;
-        let m = p.out.monthlyStart;
-        if (inp.plan === 'escalating') m *= Math.pow(1.02, y - p.out.startYear);
-        p.out.payoutByYear[y] = m * 12;
-      }
-      if (inp.countOA && p.out.oaLumpYear === null && a >= 55 && y >= yRet) {
-        p.out.oaLump = p.oa; p.out.oaLumpYear = y; p.oa = 0;
-      }
-      if (p.out.ra65 === null) {
-        if (!p.formed) {
-          const ex = tiered([Math.min(p.oa, 20000), p.sa, p.ma], [[60000, 0.01]]);
-          p.oa *= 1.025; p.sa = p.sa * 1.04 + ex[0] + ex[1]; p.ma = p.ma * 1.04 + ex[2];
-        } else {
-          const ex = tiered([p.ra, Math.min(p.oa, 20000), p.ma], [[30000, 0.02], [30000, 0.01]]);
-          p.ra = p.ra * 1.04 + ex[0] + ex[1]; p.oa *= 1.025; p.ma = p.ma * 1.04 + ex[2];
+  // CPF LIFE Standard Plan monthly payout for an RA balance at the reference age,
+  // interpolated between the published table points. The table is expressed as
+  // payout-per-dollar of RA balance so interpolation stays proportional.
+  function payoutAtReferenceAge(raBalance) {
+    if (raBalance <= 0) return 0;
+    const points = lifeTablePoints.map(([balance, payout]) => [balance, payout / balance]);
+    let payoutPerDollar = points[points.length - 1][1];
+    if (raBalance <= points[0][0]) {
+      payoutPerDollar = points[0][1];
+    } else {
+      for (let segmentIndex = 0; segmentIndex < points.length - 1; segmentIndex++) {
+        const [lowerBalance, lowerRate] = points[segmentIndex];
+        const [upperBalance, upperRate] = points[segmentIndex + 1];
+        if (raBalance >= lowerBalance && raBalance <= upperBalance) {
+          const weight = (raBalance - lowerBalance) / (upperBalance - lowerBalance);
+          payoutPerDollar = lowerRate + weight * (upperRate - lowerRate);
+          break;
         }
-      } else {
-        p.oa *= 1.025;
+      }
+    }
+    return raBalance * payoutPerDollar;
+  }
+
+  // Extra interest across accounts in priority order, filling each tier before the next.
+  // Returns the extra interest earned by each account.
+  function tieredExtraInterest(accountBalances, tiers) {
+    const extraByAccount = accountBalances.map(() => 0);
+    let tierIndex = 0;
+    let tierRemaining = tiers[0][0];
+    for (let accountIndex = 0; accountIndex < accountBalances.length; accountIndex++) {
+      let balanceToAllocate = accountBalances[accountIndex];
+      while (balanceToAllocate > 0 && tierIndex < tiers.length) {
+        const amountInTier = Math.min(balanceToAllocate, tierRemaining);
+        extraByAccount[accountIndex] += amountInTier * tiers[tierIndex][1];
+        balanceToAllocate -= amountInTier;
+        tierRemaining -= amountInTier;
+        if (tierRemaining <= 0) {
+          tierIndex++;
+          if (tierIndex < tiers.length) tierRemaining = tiers[tierIndex][0];
+        }
+      }
+    }
+    return extraByAccount;
+  }
+
+  function createPerson(personInput, isFemale) {
+    return {
+      isFemale,
+      startingAge: personInput.age,
+      ordinary: personInput.oa,
+      special: personInput.sa,
+      medisave: personInput.ma,
+      retirement: 0,
+      raFormed: false,
+      lifeLockedIn: false,
+      result: {
+        yearAt55: null, frsAt55: null, ersAt55: null, raAtFormation: null,
+        oaTransferredToOwnSpecial: 0, oaGivenToSpouse: 0, oaReceivedFromSpouse: 0,
+        oaUsedForErsTopUp: 0, cashUsedForErsTopUp: 0, raAfterErsTopUp: null,
+        raAtReferenceAge: null, yearAtReferenceAge: baseYear + lifeReferenceAge - personInput.age,
+        monthlyPayoutAtStart: 0, payoutStartYear: null,
+        oaSpentAtRetirement: 0, oaSpentYear: null,
+        payoutByYear: {},
+      },
+    };
+  }
+
+  // Someone already 55 or older today has their RA formed from SA up front.
+  function formExistingRetirementAccounts(people, growthRate) {
+    for (const person of people) {
+      if (person.startingAge < raFormationAge) continue;
+      person.retirement = person.special;
+      person.special = 0;
+      person.raFormed = true;
+      Object.assign(person.result, {
+        raAtFormation: person.retirement,
+        yearAt55: baseYear,
+        frsAt55: retirementSum('FRS', baseYear, growthRate),
+      });
+    }
+  }
+
+  // At 55: SA fills the RA up to that year's FRS, then OA tops it up; SA above the FRS
+  // overflows into OA.
+  function formRetirementAccountAt55(person, yearSums) {
+    const fromSpecial = Math.min(person.special, yearSums.full);
+    person.retirement = fromSpecial;
+    person.ordinary += person.special - fromSpecial;
+    person.special = 0;
+    const fromOrdinary = Math.min(person.ordinary, yearSums.full - person.retirement);
+    person.retirement += fromOrdinary;
+    person.ordinary -= fromOrdinary;
+    person.raFormed = true;
+    person.result.raAtFormation = person.retirement;
+  }
+
+  // Optional strategy: at each 55, fill the RA to that year's ERS, OA first, then cash.
+  function topUpRetirementAccountToErs(person, yearSums) {
+    person.result.ersAt55 = yearSums.enhanced;
+    const topUpNeeded = Math.max(0, yearSums.enhanced - person.retirement);
+    const fromOrdinary = Math.min(person.ordinary, topUpNeeded);
+    person.ordinary -= fromOrdinary;
+    person.result.oaUsedForErsTopUp = fromOrdinary;
+    person.result.cashUsedForErsTopUp = topUpNeeded - fromOrdinary;
+    person.retirement += topUpNeeded;
+    person.result.raAfterErsTopUp = person.retirement;
+  }
+
+  // Optional strategy: each year before 55, move spare OA into the person's own SA up to
+  // the FRS, then into the spouse's SA. The giver always keeps at least the BRS.
+  function transferSpareOrdinaryToSpecial(people, ages, yearSums, deathAge) {
+    people.forEach((person, personIndex) => {
+      if (ages[personIndex] >= raFormationAge) return;
+      const transfer = Math.max(0, Math.min(person.ordinary, yearSums.full - person.special));
+      person.ordinary -= transfer;
+      person.special += transfer;
+      person.result.oaTransferredToOwnSpecial += transfer;
+    });
+    people.forEach((person, personIndex) => {
+      const spouse = people[1 - personIndex];
+      const isSpouseAlreadyFormed = ages[1 - personIndex] >= raFormationAge;
+      const personAge = ages[personIndex];
+      if (isSpouseAlreadyFormed || person.ordinary <= 0 || personAge >= deathAge) return;
+      const ownBalance = person.raFormed ? person.retirement : person.special;
+      const giverKeepsBasic = Math.max(0, yearSums.basic - ownBalance);
+      const transfer = Math.max(0, Math.min(person.ordinary - giverKeepsBasic, yearSums.full - spouse.special));
+      if (transfer > 0) {
+        person.ordinary -= transfer;
+        spouse.special += transfer;
+        person.result.oaGivenToSpouse += transfer;
+        spouse.result.oaReceivedFromSpouse += transfer;
       }
     });
   }
 
-  const [you, wife] = people.map(p => p.out);
-  const rows = [];
-  for (let y = yRet; y < yEnd; y++) {
-    const need = inp.target * 12 * defl(y);
-    const cYou = you.payoutByYear[y] || 0, cWife = wife.payoutByYear[y] || 0;
-    const oaIn = (you.oaLumpYear === y ? you.oaLump : 0) + (wife.oaLumpYear === y ? wife.oaLump : 0);
-    rows.push({ y, ageYou: inp.you.age + (y - BASE_YEAR), ageWife: inp.wife.age + (y - BASE_YEAR), need, cYou, cWife, oaIn,
-      gap: need - cYou - cWife - oaIn });
+  // Lock in the CPF LIFE payout at the reference age: record the RA balance and the
+  // monthly payout, adjusted for sex, plan choice and years of deferral.
+  function lockInLifePayout(person, input) {
+    person.lifeLockedIn = true;
+    person.result.raAtReferenceAge = person.retirement;
+    let monthlyPayout = payoutAtReferenceAge(person.retirement) * tableCalibrationFactor
+      * (person.isFemale ? femalePayoutFactor : 1);
+    if (input.plan === 'escalating') monthlyPayout *= escalatingStartRatio;
+    const deferredYears = Math.max(0, input.startAge - lifeReferenceAge);
+    person.result.monthlyPayoutAtStart = monthlyPayout * Math.pow(deferralFactorPerYear, deferredYears);
   }
-  // Smallest pot at retirement that never runs below zero.
-  let P = 0;
-  for (let k = rows.length - 1; k >= 0; k--) P = Math.max(0, rows[k].gap + P / (1 + inp.rPost));
-  const pot = rows.length ? P : 0;
-  let bal = pot;
-  for (const row of rows) { row.start = bal; bal = Math.max(0, (bal - row.gap) * (1 + inp.rPost)); row.end = bal; }
 
-  const cash55 = [you, wife].map(o => ({ nominal: o.cashTopUp, today: o.y55 ? o.cashTopUp / defl(o.y55) : 0, y: o.y55 }));
-  const cash55Today = cash55[0].today + cash55[1].today;
-  const potToday = pot / defl(yRet);
-  return { yRet, yEnd, pot, potToday, cash55, cash55Today, totalToday: cash55Today + potToday, you, wife, rows, defl };
+  function recordYearlyPayout(person, age, input, year) {
+    if (age < input.startAge || !person.lifeLockedIn) return;
+    if (person.result.payoutStartYear === null) person.result.payoutStartYear = year;
+    let monthlyPayout = person.result.monthlyPayoutAtStart;
+    if (input.plan === 'escalating') {
+      monthlyPayout *= Math.pow(escalatingGrowthPerYear, year - person.result.payoutStartYear);
+    }
+    person.result.payoutByYear[year] = monthlyPayout * 12;
+  }
+
+  // At retirement, leftover OA becomes spendable cash (unless reserved for the mortgage).
+  function spendLeftoverOrdinary(person, age, input, retirementYear, year) {
+    if (!input.countOA || person.result.oaSpentYear !== null) return;
+    if (age < raFormationAge || year < retirementYear) return;
+    person.result.oaSpentAtRetirement = person.ordinary;
+    person.result.oaSpentYear = year;
+    person.ordinary = 0;
+  }
+
+  // Credit one year of interest. Once LIFE is locked in the RA is gone, so only OA grows.
+  function creditInterest(person) {
+    if (person.lifeLockedIn) {
+      person.ordinary *= ordinaryGrowth;
+      return;
+    }
+    const cappedOrdinary = Math.min(person.ordinary, extraInterestOrdinaryCap);
+    if (!person.raFormed) {
+      const extra = tieredExtraInterest([cappedOrdinary, person.special, person.medisave], extraInterestTiersBeforeRa);
+      person.ordinary *= ordinaryGrowth;
+      person.special = person.special * specialGrowth + extra[0] + extra[1];
+      person.medisave = person.medisave * specialGrowth + extra[2];
+    } else {
+      const extra = tieredExtraInterest([person.retirement, cappedOrdinary, person.medisave], extraInterestTiersAfterRa);
+      person.retirement = person.retirement * specialGrowth + extra[0] + extra[1];
+      person.ordinary *= ordinaryGrowth;
+      person.medisave = person.medisave * specialGrowth + extra[2];
+    }
+  }
+
+  function advanceOneYear(people, ages, input, retirementYear, year) {
+    const yearSums = yearlyRetirementSums(year, input.rsGrowth);
+
+    people.forEach((person, personIndex) => {
+      if (ages[personIndex] >= input.deathAge) return;
+      if (!person.raFormed && ages[personIndex] >= raFormationAge) {
+        person.result.yearAt55 = year;
+        person.result.frsAt55 = yearSums.full;
+        formRetirementAccountAt55(person, yearSums);
+      }
+      if (input.ers && person.raFormed && person.result.raAfterErsTopUp === null
+        && ages[personIndex] < lifeReferenceAge) {
+        topUpRetirementAccountToErs(person, yearSums);
+      }
+    });
+
+    if (input.optOA) transferSpareOrdinaryToSpecial(people, ages, yearSums, input.deathAge);
+
+    people.forEach((person, personIndex) => {
+      const age = ages[personIndex];
+      if (age >= input.deathAge) return;
+      if (age >= lifeReferenceAge && !person.lifeLockedIn) lockInLifePayout(person, input);
+      recordYearlyPayout(person, age, input, year);
+      spendLeftoverOrdinary(person, age, input, retirementYear, year);
+      creditInterest(person);
+    });
+  }
+
+  // Year-by-year retirement budget: income needed, CPF LIFE payouts, OA spent, shortfall
+  // that must come from savings.
+  function buildDrawdownRows(youResult, wifeResult, input, retirementYear, yearEnding) {
+    const drawdownRows = [];
+    for (let year = retirementYear; year < yearEnding; year++) {
+      const need = input.target * 12 * Math.pow(1 + input.inflation, year - baseYear);
+      const lifePayoutYou = youResult.payoutByYear[year] || 0;
+      const lifePayoutWife = wifeResult.payoutByYear[year] || 0;
+      const oaSpent = (youResult.oaSpentYear === year ? youResult.oaSpentAtRetirement : 0)
+        + (wifeResult.oaSpentYear === year ? wifeResult.oaSpentAtRetirement : 0);
+      drawdownRows.push({
+        year,
+        ageYou: input.you.age + (year - baseYear),
+        ageWife: input.wife.age + (year - baseYear),
+        need,
+        lifePayoutYou,
+        lifePayoutWife,
+        oaSpent,
+        shortfall: need - lifePayoutYou - lifePayoutWife - oaSpent,
+      });
+    }
+    return drawdownRows;
+  }
+
+  // Smallest pot at retirement that never runs below zero: walk the years backwards,
+  // discounting each year's shortfall to the previous year.
+  function solveSavingsNeeded(drawdownRows, postRetirementReturn) {
+    let savingsNeeded = 0;
+    for (let rowIndex = drawdownRows.length - 1; rowIndex >= 0; rowIndex--) {
+      savingsNeeded = Math.max(0, drawdownRows[rowIndex].shortfall
+        + savingsNeeded / (1 + postRetirementReturn));
+    }
+    return drawdownRows.length ? savingsNeeded : 0;
+  }
+
+  // Walk the pot forward to show the running balance each year.
+  function simulateDrawdown(drawdownRows, startingBalance, postRetirementReturn) {
+    let balance = startingBalance;
+    for (const row of drawdownRows) {
+      row.startBalance = balance;
+      balance = Math.max(0, (balance - row.shortfall) * (1 + postRetirementReturn));
+      row.endBalance = balance;
+    }
+  }
+
+  function plan(input) {
+    const retirementYear = baseYear + Math.max(0, input.retireAge - input.you.age);
+    const yearEnding = baseYear + Math.max(input.deathAge - input.you.age, input.deathAge - input.wife.age); // exclusive
+    const deflate = year => Math.pow(1 + input.inflation, year - baseYear);
+
+    const people = [createPerson(input.you, false), createPerson(input.wife, true)];
+    const ages = year => people.map(person => person.startingAge + (year - baseYear));
+
+    formExistingRetirementAccounts(people, input.rsGrowth);
+    for (let year = baseYear; year < yearEnding; year++) {
+      advanceOneYear(people, ages(year), input, retirementYear, year);
+    }
+
+    const [youResult, wifeResult] = people.map(person => person.result);
+    const drawdownRows = buildDrawdownRows(youResult, wifeResult, input, retirementYear, yearEnding);
+    const savingsAtRetirement = solveSavingsNeeded(drawdownRows, input.rPost);
+    simulateDrawdown(drawdownRows, savingsAtRetirement, input.rPost);
+
+    const ersTopUpByPerson = [youResult, wifeResult].map(personResult => ({
+      nominal: personResult.cashUsedForErsTopUp,
+      todayDollars: personResult.yearAt55 ? personResult.cashUsedForErsTopUp / deflate(personResult.yearAt55) : 0,
+      year: personResult.yearAt55,
+    }));
+    const ersTopUpToday = ersTopUpByPerson[0].todayDollars + ersTopUpByPerson[1].todayDollars;
+    const savingsAtRetirementToday = savingsAtRetirement / deflate(retirementYear);
+
+    return {
+      retirementYear,
+      yearEnding,
+      savingsAtRetirement,
+      savingsAtRetirementToday,
+      ersTopUpByPerson,
+      ersTopUpToday,
+      totalToday: ersTopUpToday + savingsAtRetirementToday,
+      you: youResult,
+      wife: wifeResult,
+      drawdownRows,
+      deflate,
+    };
+  }
+
+  return { plan, retirementSum, payoutAtReferenceAge, baseYear };
 }
 
-if (typeof module !== 'undefined') module.exports = { plan, payoutAt65, retSum };
+if (typeof module !== 'undefined') module.exports = { createModel };
+else if (typeof window !== 'undefined') window.RetirementModel = { createModel };

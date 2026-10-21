@@ -1,0 +1,31 @@
+# Example figures the form starts with. A user's own edits are saved in their browser.
+# Birth years are computed from age_now at runtime, so this file does not go stale.
+
+goal:
+  monthly_income_today: 6000     # combined, in today's dollars
+  retire_age: 65
+  plan_until_age: 90
+  inflation_pct: 2.5
+  post_retirement_return_pct: 3
+
+people:
+  me:
+    age_now: 45
+    ordinary_account: 120000
+    special_account: 150000
+    medisave_account: 70000
+  wife:
+    age_now: 43
+    ordinary_account: 80000
+    special_account: 100000
+    medisave_account: 60000
+
+strategies:
+  cpf_life_plan: standard        # standard | escalating
+  move_spare_oa_to_sa: false
+  top_up_ra_to_ers: true
+
+assumptions:
+  life_payout_start_age: 65      # 65 to 70
+  retirement_sum_growth_pct: 3.5 # growth applied to the FRS after the last announced year
+  spend_leftover_oa: true
