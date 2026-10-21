@@ -1,5 +1,5 @@
-// Household retirement demand model (Singapore / CPF). Annual steps, nominal dollars, year 0 = 2026.
-const BASE_YEAR = 2026;
+// Household retirement demand model (Singapore / CPF). Annual steps, nominal dollars, year 0 = now.
+const BASE_YEAR = new Date().getFullYear();
 
 // Announced: FRS 2026 $220,400, 2027 $228,200; grows at g after. BRS = FRS/2, ERS = 2 x FRS.
 function retSum(kind, year, g) {
