@@ -5,6 +5,9 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
 const DATA = require('./data.js');
 const { createModel } = require('./model.js');
 
@@ -134,10 +137,21 @@ check('LIFE payout table points and interpolation',
 
 check('data.js wiring', {
   lifeTableRows: DATA.cpfLife.table.points.length,
-  announcedSums: DATA.cpfRules.retirement_sums.announced.length,
+  announcedSums: DATA.cpfRules.retirementSums.announced.length,
   defaultTarget: DATA.defaults.target,
   defaultAgeNow: DATA.defaultAgeNow,
 }, { lifeTableRows: 6, announcedSums: 2, defaultTarget: 6000, defaultAgeNow: { me: 45, wife: 43 } });
+
+// Compile (not run) the page's inline script to catch syntax errors; CI has no browser.
+const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const scriptBlocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
+let compileError = null;
+try {
+  new vm.Script(scriptBlocks[scriptBlocks.length - 1], { filename: 'index.html (inline script)' });
+} catch (error) {
+  compileError = error.message;
+}
+check('index.html inline script compiles', compileError, null);
 
 if (failures > 0) {
   console.error(failures + ' check(s) failed');

@@ -1,40 +1,43 @@
 // Household retirement demand model (Singapore / CPF). Annual steps, nominal dollars.
-// Every statutory figure comes from the cpf data files (see data/ and update.md);
-// this file contains only rules and arithmetic.
+// Every figure comes from data.js (see update.md); this file holds only rules and arithmetic.
 'use strict';
 
 // createModel(cpfRules, cpfLife, { baseYear }) -> { plan, retirementSum, payoutAtReferenceAge }
-// cpfRules: parsed data/cpf_rules.yaml. cpfLife: parsed data/cpf_life_<year>.yaml.
+// cpfRules and cpfLife are the matching sections of data.js.
 // baseYear: override for testing; defaults to the current calendar year.
 function createModel(cpfRules, cpfLife, options) {
-  const baseYear = (options && options.baseYear) || new Date().getFullYear();
+  const baseYear = options?.baseYear ?? new Date().getFullYear();
 
-  const raFormationAge = cpfRules.ages.ra_formation_age;
-  const lifeReferenceAge = cpfRules.ages.life_reference_age;
-  const ordinaryGrowth = 1 + cpfRules.interest.ordinary_account_pct / 100;
-  const specialGrowth = 1 + cpfRules.interest.special_account_pct / 100;
-  const extraInterestOrdinaryCap = cpfRules.extra_interest.ordinary_account_cap;
-  const extraInterestTiersBeforeRa = cpfRules.extra_interest.before_ra_formation
-    .map(tier => [tier.tier_balance, tier.extra_pct / 100]);
-  const extraInterestTiersAfterRa = cpfRules.extra_interest.after_ra_formation
-    .map(tier => [tier.tier_balance, tier.extra_pct / 100]);
-  const lifeTablePoints = cpfLife.table.points.map(point => [point.ra_balance, point.monthly_payout]);
-  const femalePayoutFactor = 1 - cpfLife.adjustments.female_discount_pct / 100;
-  const deferralFactorPerYear = 1 + cpfLife.adjustments.deferral_uplift_pct_per_year / 100;
-  const tableCalibrationFactor = cpfLife.adjustments.table_calibration_factor;
-  const escalatingStartRatio = cpfLife.escalating_plan.escalating_frs_monthly
-    / cpfLife.escalating_plan.standard_frs_monthly;
-  const escalatingGrowthPerYear = 1 + cpfLife.escalating_plan.annual_increase_pct / 100;
+  // Statutory ages and interest (the interest constants are growth multipliers).
+  const raFormationAge = cpfRules.ages.raFormationAge;
+  const lifeReferenceAge = cpfRules.ages.lifeReferenceAge;
+  const ordinaryGrowth = 1 + cpfRules.interest.ordinaryAccountPct / 100;
+  const specialGrowth = 1 + cpfRules.interest.specialAccountPct / 100;
+  const extraInterestOrdinaryCap = cpfRules.extraInterest.ordinaryAccountCap;
+  const extraInterestTiersBeforeRa = cpfRules.extraInterest.beforeRaFormation
+    .map(tier => [tier.tierBalance, tier.extraPct / 100]);
+  const extraInterestTiersAfterRa = cpfRules.extraInterest.afterRaFormation
+    .map(tier => [tier.tierBalance, tier.extraPct / 100]);
+
+  // CPF LIFE payout rules, pre-reduced for the payout calculation. The table becomes
+  // payout-per-dollar of RA balance so interpolation stays proportional.
+  const lifeTablePoints = cpfLife.table.points.map(point => [point.raBalance, point.monthlyPayout]);
+  const femalePayoutFactor = 1 - cpfLife.adjustments.femaleDiscountPct / 100;
+  const deferralFactorPerYear = 1 + cpfLife.adjustments.deferralUpliftPctPerYear / 100;
+  const tableCalibrationFactor = cpfLife.adjustments.tableCalibrationFactor;
+  const escalatingStartRatio = cpfLife.escalatingPlan.escalatingFrsMonthly
+    / cpfLife.escalatingPlan.standardFrsMonthly;
+  const escalatingGrowthPerYear = 1 + cpfLife.escalatingPlan.annualIncreasePct / 100;
 
   // Retirement sums: the last announced FRS at or before the year applies exactly;
   // later years grow from it at the given rate. BRS = FRS x fraction, ERS = FRS x multiple.
   function retirementSum(kind, year, growthRate) {
-    const announcedRows = cpfRules.retirement_sums.announced;
+    const announcedRows = cpfRules.retirementSums.announced;
     let governingRow = announcedRows[0];
     for (const row of announcedRows) if (row.year <= year) governingRow = row;
     const fullSum = governingRow.frs * Math.pow(1 + growthRate, year - governingRow.year);
-    if (kind === 'BRS') return fullSum * cpfRules.retirement_sums.brs_fraction_of_frs;
-    if (kind === 'ERS') return fullSum * cpfRules.retirement_sums.ers_multiple_of_frs;
+    if (kind === 'BRS') return fullSum * cpfRules.retirementSums.brsFractionOfFrs;
+    if (kind === 'ERS') return fullSum * cpfRules.retirementSums.ersMultipleOfFrs;
     return fullSum;
   }
 
@@ -193,6 +196,8 @@ function createModel(cpfRules, cpfLife, options) {
     person.result.monthlyPayoutAtStart = monthlyPayout * Math.pow(deferralFactorPerYear, deferredYears);
   }
 
+  // Pay out the locked-in payout for each year from the chosen start age, growing it
+  // every year if the Escalating plan is chosen.
   function recordYearlyPayout(person, age, input, year) {
     if (age < input.startAge || !person.lifeLockedIn) return;
     if (person.result.payoutStartYear === null) person.result.payoutStartYear = year;
@@ -232,6 +237,10 @@ function createModel(cpfRules, cpfLife, options) {
     }
   }
 
+  // One calendar year, in three passes over the household:
+  // 1. Form RAs at 55 and apply the optional ERS top-up.
+  // 2. Run the optional OA-to-SA transfers.
+  // 3. Pay CPF LIFE, spend leftover OA at retirement, and credit a year of interest.
   function advanceOneYear(people, ages, input, retirementYear, year) {
     const yearSums = yearlyRetirementSums(year, input.rsGrowth);
 
@@ -262,10 +271,10 @@ function createModel(cpfRules, cpfLife, options) {
 
   // Year-by-year retirement budget: income needed, CPF LIFE payouts, OA spent, shortfall
   // that must come from savings.
-  function buildDrawdownRows(youResult, wifeResult, input, retirementYear, yearEnding) {
+  function buildDrawdownRows(youResult, wifeResult, input, retirementYear, yearEnding, deflate) {
     const drawdownRows = [];
     for (let year = retirementYear; year < yearEnding; year++) {
-      const need = input.target * 12 * Math.pow(1 + input.inflation, year - baseYear);
+      const need = input.target * 12 * deflate(year);
       const lifePayoutYou = youResult.payoutByYear[year] || 0;
       const lifePayoutWife = wifeResult.payoutByYear[year] || 0;
       const oaSpent = (youResult.oaSpentYear === year ? youResult.oaSpentAtRetirement : 0)
@@ -305,6 +314,8 @@ function createModel(cpfRules, cpfLife, options) {
     }
   }
 
+  // The whole model: simulate every year from now until the plan ends, then work out
+  // the smallest savings pot that covers the retirement-year shortfalls.
   function plan(input) {
     const retirementYear = baseYear + Math.max(0, input.retireAge - input.you.age);
     const yearEnding = baseYear + Math.max(input.deathAge - input.you.age, input.deathAge - input.wife.age); // exclusive
@@ -319,7 +330,7 @@ function createModel(cpfRules, cpfLife, options) {
     }
 
     const [youResult, wifeResult] = people.map(person => person.result);
-    const drawdownRows = buildDrawdownRows(youResult, wifeResult, input, retirementYear, yearEnding);
+    const drawdownRows = buildDrawdownRows(youResult, wifeResult, input, retirementYear, yearEnding, deflate);
     const savingsAtRetirement = solveSavingsNeeded(drawdownRows, input.rPost);
     simulateDrawdown(drawdownRows, savingsAtRetirement, input.rPost);
 

@@ -259,11 +259,11 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
 
 const baseYear = new Date().getFullYear();
 const cpfRules = DATA.cpfRules;
-const raFormationAge = cpfRules.ages.ra_formation_age;
-const lifeReferenceAge = cpfRules.ages.life_reference_age;
+const raFormationAge = cpfRules.ages.raFormationAge;
+const lifeReferenceAge = cpfRules.ages.lifeReferenceAge;
 const model = RetirementModel.createModel(DATA.cpfRules, DATA.cpfLife);
 
-// Example figures, from data/default.yaml. Birth years are derived from the ages there.
+// Example figures, from data.js. Birth years are derived from the ages there.
 const defaultValues = {
   ...DATA.defaults,
   'y-yob': baseYear - DATA.defaultAgeNow.me,
@@ -277,6 +277,8 @@ const CARRY_OVER_KEYS = ['target', 'deathAge', 'inflation', 'rPost', 'y-age', 'w
   'y-oa', 'w-oa', 'y-sa', 'w-sa', 'y-ma', 'w-ma', 'plan', 'startAge', 'rsGrowth', 'countOA'];
 let displayUnit = 'today';
 
+// Write and read one form input. The plan choice is a radio pair, not a field, so it
+// gets its own path; everything else is a checkbox (boolean) or a field (string).
 function setVal(id, value) {
   if (id === 'plan') {
     document.getElementById(value === 'escalating' ? 'plan-escalating' : 'plan-standard').checked = true;
@@ -291,6 +293,8 @@ function getVal(id) {
   return element.type === 'checkbox' ? element.checked : element.value;
 }
 
+// Fill the form from this browser's saved inputs, falling back to the example figures.
+// A save from the pre-v2 storage format is migrated forward where possible.
 function load(useSaved = true) {
   let savedValues = null;
   if (useSaved) {
@@ -329,6 +333,7 @@ const num = (id, fallback = 0) => {
   return isFinite(value) ? value : fallback;
 };
 
+// Form values -> model input: percent fields become fractions, birth years become ages.
 function readInputs() {
   const clampBirthYear = year => Math.min(baseYear - 18, Math.max(baseYear - 64, Math.round(year)));
   return {
@@ -352,21 +357,26 @@ function readInputs() {
   };
 }
 
-const fmt = amount => (amount < -0.5 ? '−$' : '$') + Math.round(Math.abs(amount)).toLocaleString('en-SG');
-const fmtK = amount => {
+// Money formatters: "$1,234" for exact amounts, "$1.2M"/"$456k" for chart axes.
+const dollars = amount => (amount < -0.5 ? '−$' : '$') + Math.round(Math.abs(amount)).toLocaleString('en-SG');
+const compactDollars = amount => {
   const absAmount = Math.abs(amount);
   const compact = absAmount >= 1e6 ? (absAmount / 1e6).toFixed(1) + 'M'
     : absAmount >= 1e3 ? Math.round(absAmount / 1e3) + 'k' : Math.round(absAmount);
   return (amount < 0 ? '−$' : '$') + compact;
 };
-const chg = difference => Math.abs(difference) < 500 ? 'no change'
-  : (difference < 0 ? `<b>${fmt(-difference)} lower</b>` : `<b>${fmt(difference)} higher</b>`);
+// Describe a strategy's effect as "no change", "X lower" or "X higher" (under $500 reads as no change).
+const describeChange = difference => Math.abs(difference) < 500 ? 'no change'
+  : (difference < 0 ? `<b>${dollars(-difference)} lower</b>` : `<b>${dollars(difference)} higher</b>`);
 
+// The current form inputs and the model result they produce, refreshed by render().
 let inputs, planResult;
 // Convert a nominal amount into the display unit (today's dollars deflate by year).
 const inUnit = (amount, year) => displayUnit === 'today' ? amount / planResult.deflate(year) : amount;
 const unitLabel = () => displayUnit === 'today' ? "today's dollars" : 'future dollars';
 
+// Recompute everything from the current form values: run the model, save the inputs,
+// then refresh each part of the page.
 function render() {
   inputs = readInputs();
   planResult = model.plan(inputs);
@@ -384,12 +394,12 @@ function render() {
     ersCard.classList.remove('off');
     const topUpValue = topUp => displayUnit === 'today' ? topUp.todayDollars : topUp.nominal;
     const meTopUp = planResult.ersTopUpByPerson[0], wifeTopUp = planResult.ersTopUpByPerson[1];
-    document.getElementById('ers-big').textContent = fmt(topUpValue(meTopUp) + topUpValue(wifeTopUp));
+    document.getElementById('ers-big').textContent = dollars(topUpValue(meTopUp) + topUpValue(wifeTopUp));
     ersSplit.innerHTML =
-      `<dt>Me, at 55 in ${meTopUp.year}</dt><dd>${fmt(topUpValue(meTopUp))}</dd>` +
-      `<dt>Wife, at 55 in ${wifeTopUp.year}</dt><dd>${fmt(topUpValue(wifeTopUp))}</dd>`;
+      `<dt>Me, at 55 in ${meTopUp.year}</dt><dd>${dollars(topUpValue(meTopUp))}</dd>` +
+      `<dt>Wife, at 55 in ${wifeTopUp.year}</dt><dd>${dollars(topUpValue(wifeTopUp))}</dd>`;
     document.getElementById('ers-note').textContent =
-      `In ${unitLabel()}. Fills each RA to that year's ERS (about ${fmt(planResult.you.ersAt55)} / ${fmt(planResult.wife.ersAt55)}) after leftover OA.`;
+      `In ${unitLabel()}. Fills each RA to that year's ERS (about ${dollars(planResult.you.ersAt55)} / ${dollars(planResult.wife.ersAt55)}) after leftover OA.`;
   } else {
     ersCard.classList.add('off');
     document.getElementById('ers-big').textContent = '—';
@@ -400,18 +410,18 @@ function render() {
   // Headline 2: savings at retirement
   document.getElementById('ret-eyebrow').textContent =
     `Savings needed at retirement, age ${inputs.retireAge} (${planResult.retirementYear})`;
-  document.getElementById('ret-big').textContent = fmt(displayUnit === 'today'
+  document.getElementById('ret-big').textContent = dollars(displayUnit === 'today'
     ? planResult.savingsAtRetirementToday
     : planResult.savingsAtRetirement);
   const otherUnit = displayUnit === 'today'
-    ? `${fmt(planResult.savingsAtRetirement)} in ${planResult.retirementYear} dollars`
-    : `${fmt(planResult.savingsAtRetirementToday)} in today's dollars`;
+    ? `${dollars(planResult.savingsAtRetirement)} in ${planResult.retirementYear} dollars`
+    : `${dollars(planResult.savingsAtRetirementToday)} in today's dollars`;
   document.getElementById('ret-note').textContent =
-    `In ${unitLabel()}; ${otherUnit}. Funds ${fmt(inputs.target)} a month in today's money until ${planResult.yearEnding - 1}, on top of CPF LIFE${inputs.countOA ? ' and leftover OA' : ''}.`;
+    `In ${unitLabel()}; ${otherUnit}. Funds ${dollars(inputs.target)} a month in today's money until ${planResult.yearEnding - 1}, on top of CPF LIFE${inputs.countOA ? ' and leftover OA' : ''}.`;
 
   document.getElementById('total-line').innerHTML = inputs.ers
-    ? `Total to build: <b>${fmt(planResult.totalToday)}</b> in today's dollars (${fmt(planResult.ersTopUpToday)} ERS top-ups, ${fmt(planResult.savingsAtRetirementToday)} at retirement).`
-    : `Total to build: <b>${fmt(planResult.totalToday)}</b> in today's dollars, all at retirement.`;
+    ? `Total to build: <b>${dollars(planResult.totalToday)}</b> in today's dollars (${dollars(planResult.ersTopUpToday)} ERS top-ups, ${dollars(planResult.savingsAtRetirementToday)} at retirement).`
+    : `Total to build: <b>${dollars(planResult.totalToday)}</b> in today's dollars, all at retirement.`;
 
   renderEffects(); renderPost(); renderCPF();
 }
@@ -424,28 +434,30 @@ function scenario(mutate) {
 }
 
 function renderEffects() {
-  const escalatingPct = DATA.cpfLife.escalating_plan.annual_increase_pct;
+  const escalatingPct = DATA.cpfLife.escalatingPlan.annualIncreasePct;
   const standardRun = scenario(runInputs => { runInputs.plan = 'standard'; });
   const escalatingRun = scenario(runInputs => { runInputs.plan = 'escalating'; });
   document.getElementById('fx-plan').innerHTML =
-    `Escalating vs Standard: savings at retirement ${chg(escalatingRun.savingsAtRetirementToday - standardRun.savingsAtRetirementToday)}. Starts lower, rises ${escalatingPct}% a year.`;
+    `Escalating vs Standard: savings at retirement ${describeChange(escalatingRun.savingsAtRetirementToday - standardRun.savingsAtRetirementToday)}. Starts lower, rises ${escalatingPct}% a year.`;
 
   const withTransfer = scenario(runInputs => { runInputs.optOA = true; });
   const withoutTransfer = scenario(runInputs => { runInputs.optOA = false; });
-  let transferEffect = `Savings at retirement ${chg(withTransfer.savingsAtRetirementToday - withoutTransfer.savingsAtRetirementToday)}`;
-  if (inputs.ers) transferEffect += `, ERS top-up cash ${chg(withTransfer.ersTopUpToday - withoutTransfer.ersTopUpToday)}`;
+  let transferEffect = `Savings at retirement ${describeChange(withTransfer.savingsAtRetirementToday - withoutTransfer.savingsAtRetirementToday)}`;
+  if (inputs.ers) transferEffect += `, ERS top-up cash ${describeChange(withTransfer.ersTopUpToday - withoutTransfer.ersTopUpToday)}`;
   document.getElementById('fx-opt').innerHTML = transferEffect + `. Today's dollars.`;
 
   const withTopUp = scenario(runInputs => { runInputs.ers = true; });
   const withoutTopUp = scenario(runInputs => { runInputs.ers = false; });
   document.getElementById('fx-ers').innerHTML =
-    `Savings at retirement ${chg(withTopUp.savingsAtRetirementToday - withoutTopUp.savingsAtRetirementToday)}, but ${fmt(withTopUp.ersTopUpToday)} cash needed at 55. Total cash ${chg(withTopUp.totalToday - withoutTopUp.totalToday)}. Today's dollars.`;
+    `Savings at retirement ${describeChange(withTopUp.savingsAtRetirementToday - withoutTopUp.savingsAtRetirementToday)}, but ${dollars(withTopUp.ersTopUpToday)} cash needed at 55. Total cash ${describeChange(withTopUp.totalToday - withoutTopUp.totalToday)}. Today's dollars.`;
 }
 
+// The income section: monthly income by source as a stacked bar chart, plus the
+// year-by-year drawdown table.
 function renderPost() {
   const drawdownRows = planResult.drawdownRows;
   const savingsOnlyYears = drawdownRows.filter(row => row.lifePayoutYou + row.lifePayoutWife === 0).length;
-  document.getElementById('inc-h').textContent = `Where each month's ${fmt(inputs.target)} comes from`;
+  document.getElementById('inc-h').textContent = `Where each month's ${dollars(inputs.target)} comes from`;
   document.getElementById('inc-lede').textContent =
     `Monthly income by year, in ${unitLabel()}. ` +
     (savingsOnlyYears
@@ -453,7 +465,7 @@ function renderPost() {
       : '') +
     (inputs.plan === 'standard'
       ? 'Standard payouts are fixed, so savings cover more as prices rise.'
-      : `Escalating payouts rise ${DATA.cpfLife.escalating_plan.annual_increase_pct}% a year, closer to prices.`);
+      : `Escalating payouts rise ${DATA.cpfLife.escalatingPlan.annualIncreasePct}% a year, closer to prices.`);
   barChart(document.getElementById('chart-inc'), drawdownRows.map(row => ({
     year: row.year,
     lifeYou: inUnit(row.lifePayoutYou, row.year) / 12,
@@ -463,19 +475,21 @@ function renderPost() {
   })));
   let tableHtml = `<thead><tr><th>Year</th><th>Ages</th><th>Need / yr</th><th>My CPF LIFE</th><th>Wife's CPF LIFE</th>${inputs.countOA ? '<th>OA spent</th>' : ''}<th>From savings</th><th>Savings at start</th></tr></thead><tbody>`;
   drawdownRows.forEach(row => {
-    tableHtml += `<tr><td>${row.year}</td><td>${row.ageYou} / ${row.ageWife}</td><td>${fmt(inUnit(row.need, row.year))}</td>` +
-      `<td>${row.lifePayoutYou ? fmt(inUnit(row.lifePayoutYou, row.year)) : '—'}</td>` +
-      `<td>${row.lifePayoutWife ? fmt(inUnit(row.lifePayoutWife, row.year)) : '—'}</td>` +
-      (inputs.countOA ? `<td>${row.oaSpent ? fmt(inUnit(row.oaSpent, row.year)) : '—'}</td>` : '') +
-      `<td>${fmt(inUnit(Math.max(0, row.shortfall), row.year))}</td>` +
-      `<td>${fmt(inUnit(row.startBalance, row.year))}</td></tr>`;
+    tableHtml += `<tr><td>${row.year}</td><td>${row.ageYou} / ${row.ageWife}</td><td>${dollars(inUnit(row.need, row.year))}</td>` +
+      `<td>${row.lifePayoutYou ? dollars(inUnit(row.lifePayoutYou, row.year)) : '—'}</td>` +
+      `<td>${row.lifePayoutWife ? dollars(inUnit(row.lifePayoutWife, row.year)) : '—'}</td>` +
+      (inputs.countOA ? `<td>${row.oaSpent ? dollars(inUnit(row.oaSpent, row.year)) : '—'}</td>` : '') +
+      `<td>${dollars(inUnit(Math.max(0, row.shortfall), row.year))}</td>` +
+      `<td>${dollars(inUnit(row.startBalance, row.year))}</td></tr>`;
   });
   document.getElementById('t-post').innerHTML = tableHtml + '</tbody>';
 }
 
+// The CPF projection card for each person: groups tagged with the year its dollars
+// are worth, so future sums are never mistaken for today's.
 function renderCPF() {
   document.getElementById('cpf-rates').textContent =
-    `Balances earn CPF interest only (OA ${cpfRules.interest.ordinary_account_pct}%, SA/RA/MA ${cpfRules.interest.special_account_pct}%, plus extra on the first $${cpfRules.extra_interest.before_ra_formation.reduce((total, tier) => total + tier.tier_balance, 0).toLocaleString('en-SG')}).`;
+    `Balances earn CPF interest only (OA ${cpfRules.interest.ordinaryAccountPct}%, SA/RA/MA ${cpfRules.interest.specialAccountPct}%, plus extra on the first $${cpfRules.extraInterest.beforeRaFormation.reduce((total, tier) => total + tier.tierBalance, 0).toLocaleString('en-SG')}).`;
 
   const chip = (text, isToday) => ` <span class="chip${isToday ? ' today' : ''}">${text}</span>`;
   const buildBlock = (personResult, person) => {
@@ -486,29 +500,29 @@ function renderCPF() {
 
     if (inputs.optOA && person.age < raFormationAge) {
       pushGroup('Before 55', 'future $');
-      pushValue('OA moved into own SA', fmt(personResult.oaTransferredToOwnSpecial));
-      if (personResult.oaGivenToSpouse > 0) pushValue("OA moved to spouse's SA", fmt(personResult.oaGivenToSpouse));
-      if (personResult.oaReceivedFromSpouse > 0) pushValue("Received from spouse's OA", fmt(personResult.oaReceivedFromSpouse));
+      pushValue('OA moved into own SA', dollars(personResult.oaTransferredToOwnSpecial));
+      if (personResult.oaGivenToSpouse > 0) pushValue("OA moved to spouse's SA", dollars(personResult.oaGivenToSpouse));
+      if (personResult.oaReceivedFromSpouse > 0) pushValue("Received from spouse's OA", dollars(personResult.oaReceivedFromSpouse));
     }
     pushGroup(person.age < raFormationAge ? `At 55 (${personResult.yearAt55})` : 'Now',
       person.age < raFormationAge ? `${personResult.yearAt55} $` : `${baseYear} $`);
-    if (person.age < raFormationAge) pushValue('Full Retirement Sum that year', fmt(personResult.frsAt55));
-    pushValue(person.age < raFormationAge ? 'RA formed from SA and OA' : 'RA today', fmt(personResult.raAtFormation || 0));
+    if (person.age < raFormationAge) pushValue('Full Retirement Sum that year', dollars(personResult.frsAt55));
+    pushValue(person.age < raFormationAge ? 'RA formed from SA and OA' : 'RA today', dollars(personResult.raAtFormation || 0));
     if (inputs.ers) {
-      pushValue('Enhanced Retirement Sum that year', fmt(personResult.ersAt55 || 0));
-      pushValue('Top-up from OA', fmt(personResult.oaUsedForErsTopUp));
-      pushValue('Top-up in cash', fmt(personResult.cashUsedForErsTopUp), 'hl');
+      pushValue('Enhanced Retirement Sum that year', dollars(personResult.ersAt55 || 0));
+      pushValue('Top-up from OA', dollars(personResult.oaUsedForErsTopUp));
+      pushValue('Top-up in cash', dollars(personResult.cashUsedForErsTopUp), 'hl');
     }
     pushGroup(`At ${lifeReferenceAge} (${personResult.yearAtReferenceAge})`, `${personResult.yearAtReferenceAge} $`);
-    pushValue('RA balance', fmt(personResult.raAtReferenceAge || 0));
-    pushValue(`CPF LIFE from ${inputs.startAge}, per month`, fmt(personResult.monthlyPayoutAtStart));
+    pushValue('RA balance', dollars(personResult.raAtReferenceAge || 0));
+    pushValue(`CPF LIFE from ${inputs.startAge}, per month`, dollars(personResult.monthlyPayoutAtStart));
     pushValue(`In ${baseYear} dollars`,
-      fmt(personResult.payoutStartYear ? personResult.monthlyPayoutAtStart / planResult.deflate(personResult.payoutStartYear) : 0),
+      dollars(personResult.payoutStartYear ? personResult.monthlyPayoutAtStart / planResult.deflate(personResult.payoutStartYear) : 0),
       'hl', `${baseYear} $`);
     if (inputs.countOA) {
       pushGroup(personResult.oaSpentYear ? `At retirement (${personResult.oaSpentYear})` : 'At retirement',
         personResult.oaSpentYear ? `${personResult.oaSpentYear} $` : 'future $');
-      pushValue('OA left to spend', fmt(personResult.oaSpentAtRetirement));
+      pushValue('OA left to spend', dollars(personResult.oaSpentAtRetirement));
     }
     return lines.join('');
   };
@@ -517,6 +531,7 @@ function renderCPF() {
 }
 
 /* ---------- chart ---------- */
+// Round a chart maximum up to a friendly value: 1, 2, 2.5, 5 or 10 times a power of ten.
 function niceMax(value) {
   if (value <= 0) return 1;
   const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
@@ -535,6 +550,8 @@ function showTooltip(container, html, pointerX, pointerY) {
 }
 function hideTooltip(container) { const tooltip = container.querySelector('.tip'); if (tooltip) tooltip.hidden = true; }
 
+// One stacked bar per year (CPF LIFE of each spouse, then savings on top), with a
+// hover highlight and tooltip.
 function barChart(container, bars) {
   if (!bars.length) { container.innerHTML = ''; return; }
   const chartWidth = Math.max(320, container.clientWidth || 700);
@@ -551,14 +568,14 @@ function barChart(container, bars) {
   let svgMarkup = `<svg viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="Monthly retirement income by source and year">`;
   for (let gridLine = 0; gridLine <= 4; gridLine++) {
     const value = yMax * gridLine / 4;
-    svgMarkup += `<line x1="${margin.left}" x2="${chartWidth - margin.right}" y1="${yScale(value)}" y2="${yScale(value)}" stroke="var(--line)"/><text x="${margin.left - 8}" y="${yScale(value) + 4}" text-anchor="end">${fmtK(value)}</text>`;
+    svgMarkup += `<line x1="${margin.left}" x2="${chartWidth - margin.right}" y1="${yScale(value)}" y2="${yScale(value)}" stroke="var(--line)"/><text x="${margin.left - 8}" y="${yScale(value) + 4}" text-anchor="end">${compactDollars(value)}</text>`;
   }
   const segments = [['lifeYou', 'var(--s1)'], ['lifeSpouse', 'var(--s2)'], ['fromSavings', 'var(--s3)']];
   const labelEvery = bars.length > 20 ? 5 : 2;
   bars.forEach((bar, barIndex) => {
     const barX = margin.left + barIndex * slotWidth + barGap / 2;
     let stackBase = 0;
-    const visibleSegments = segments.filter(([segmentKey]) => bar[segmentKey] > 0.5);
+    const visibleSegments = segments.filter(([segmentKey]) => bar[segmentKey] > 0.5); // skip slivers too small to render
     visibleSegments.forEach(([segmentKey, segmentColor], segmentOrder) => {
       const segmentTop = yScale(stackBase + bar[segmentKey]);
       const segmentBottom = yScale(stackBase);
@@ -589,7 +606,7 @@ function barChart(container, bars) {
     highlight.setAttribute('visibility', 'visible');
     const stackTotal = bar.lifeYou + bar.lifeSpouse + bar.fromSavings;
     showTooltip(container,
-      `<b>${bar.year}</b> · ages ${bar.ages}<br><i style="background:var(--s1)"></i>My CPF LIFE ${fmt(bar.lifeYou)}<br><i style="background:var(--s2)"></i>Wife's CPF LIFE ${fmt(bar.lifeSpouse)}<br><i style="background:var(--s3)"></i>From savings ${fmt(bar.fromSavings)}<br>Total ${fmt(stackTotal)} / month`,
+      `<b>${bar.year}</b> · ages ${bar.ages}<br><i style="background:var(--s1)"></i>My CPF LIFE ${dollars(bar.lifeYou)}<br><i style="background:var(--s2)"></i>Wife's CPF LIFE ${dollars(bar.lifeSpouse)}<br><i style="background:var(--s3)"></i>From savings ${dollars(bar.fromSavings)}<br>Total ${dollars(stackTotal)} / month`,
       (margin.left + barIndex * slotWidth + slotWidth / 2) * pixelPerUnit,
       yScale(stackTotal) * pixelPerUnit);
   });
@@ -597,9 +614,11 @@ function barChart(container, bars) {
 }
 
 /* ---------- wiring ---------- */
-const lastAnnouncedSumYear = Math.max(...cpfRules.retirement_sums.announced.map(row => row.year));
+// The growth-rate label follows the data, so it never goes stale after a figure update.
+const lastAnnouncedSumYear = Math.max(...cpfRules.retirementSums.announced.map(row => row.year));
 document.getElementById('rsGrowthLabel').textContent = `Retirement Sum growth after ${lastAnnouncedSumYear}`;
 load();
+// Birth-year fields accept ages 18 to 64 (matching the clamp in readInputs).
 for (const id of ['y-yob', 'w-yob']) {
   const element = document.getElementById(id);
   element.min = baseYear - 64;
