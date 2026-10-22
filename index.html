@@ -104,6 +104,7 @@ main { min-width: 0; display: grid; gap: 22px; }
 .split { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; margin: 12px 0 0; font-size: 14px; }
 .split dt { color: var(--ink-2); }
 .split dd { margin: 0; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.split .sum { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; }
 .big-note { color: var(--ink-2); margin: 12px 0 0; font-size: 14px; max-width: 48ch; }
 .total { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 15px; }
 .total b { color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -403,7 +404,9 @@ function render() {
     document.getElementById('ers-big').textContent = dollars(topUpValue(meTopUp) + topUpValue(wifeTopUp));
     ersSplit.innerHTML =
       `<dt>Me, at 55 in ${meTopUp.year}</dt><dd>${dollars(topUpValue(meTopUp))}</dd>` +
-      `<dt>Wife, at 55 in ${wifeTopUp.year}</dt><dd>${dollars(topUpValue(wifeTopUp))}</dd>`;
+      `<dt>Wife, at 55 in ${wifeTopUp.year}</dt><dd>${dollars(topUpValue(wifeTopUp))}</dd>` +
+      `<dt class="sum">Top-up needed, in future dollars</dt><dd class="sum">${dollars(meTopUp.nominal + wifeTopUp.nominal)}</dd>` +
+      `<dt>Top-up needed, in today's dollars</dt><dd>${dollars(meTopUp.todayDollars + wifeTopUp.todayDollars)}</dd>`;
     document.getElementById('ers-note').textContent =
       `In ${unitLabel()}. Fills each RA to that year's ERS (about ${dollars(planResult.you.ersAt55)} / ${dollars(planResult.wife.ersAt55)}) after leftover OA.`;
   } else {
