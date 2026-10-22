@@ -57,30 +57,31 @@ function summarise(result) {
   };
 }
 
-// Golden values captured from the pre-refactor model (base year 2026).
+// Golden values captured from the model on main, which includes the household-horizon
+// LIFE payout fix (payouts run to the end of the plan for both spouses).
 const golden = {
   base: {
-    yRet: 2046, yEnd: 2073, pot: 956081.57, potToday: 583468.8, cash55Today: 476548.35,
-    totalToday: 1060017.15,
+    yRet: 2046, yEnd: 2073, pot: 901515.46, potToday: 550168.69, cash55Today: 476548.35,
+    totalToday: 1026717.04,
     cash55: [{ nominal: 239175.9, today: 186843.83, y: 2036 }, { nominal: 389620.37, today: 289704.52, y: 2038 }],
     you: { ra65: 931556.45, monthlyStart: 4830.74, cashTopUp: 239175.9, oaToOwnSA: 0, oaLump: 0 },
     wife: { ra65: 997136.94, monthlyStart: 4912.28, cashTopUp: 389620.37 },
-    firstRow: { y: 2046, ageYou: 65, ageWife: 63, need: 117980.38, cYou: 57968.86, cWife: 0, oaIn: 0, gap: 60011.52, start: 956081.57, end: 922952.15 },
-    lastRow: { y: 2072, ageYou: 91, ageWife: 89, need: 224197.26, cYou: 0, cWife: 58947.31, oaIn: 0, gap: 165249.95, start: 165249.95, end: 0 },
+    firstRow: { y: 2046, ageYou: 65, ageWife: 63, need: 117980.38, cYou: 57968.86, cWife: 0, oaIn: 0, gap: 60011.52, start: 901515.46, end: 866749.06 },
+    lastRow: { y: 2072, ageYou: 91, ageWife: 89, need: 224197.26, cYou: 57968.86, cWife: 58947.31, oaIn: 0, gap: 107281.09, start: 107281.09, end: 0 },
     rowCount: 27,
   },
   escalating: {
-    pot: 1030122.98, potToday: 628654.13, totalToday: 1105202.47,
+    pot: 960034.9, potToday: 585881.41, totalToday: 1062429.75,
     you: { monthlyStart: 3745.18 }, wife: { monthlyStart: 3808.39 },
   },
   optOA: {
-    cash55Today: 442609.28, totalToday: 1026078.07,
+    cash55Today: 442609.28, totalToday: 992777.96,
     cash55: [{ nominal: 276800.07, today: 216235.77, y: 2036 }, { nominal: 304447.19, today: 226373.5, y: 2038 }],
     you: { cashTopUp: 276800.07, oaToOwnSA: 70400 },
     wife: { cashTopUp: 304447.19 },
   },
   deferredTo70: {
-    pot: 984042.62, potToday: 600532.61, totalToday: 1077080.96,
+    pot: 911020.86, potToday: 555969.56, totalToday: 1032517.9,
     you: { monthlyStart: 6464.62 }, wife: { monthlyStart: 6573.73 },
     firstRow: { cYou: 0, cWife: 0, gap: 117980.38 },
   },

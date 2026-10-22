@@ -110,7 +110,7 @@ main { min-width: 0; display: grid; gap: 22px; }
 
 section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; min-width: 0; }
 h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: -0.01em; margin: 0 0 4px; text-wrap: balance; }
-.lede { color: var(--ink-2); margin: 0 0 14px; max-width: 70ch; font-size: 15px; }
+.lede { color: var(--ink-2); margin: 0 0 14px; font-size: 15px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
@@ -132,7 +132,7 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; letter
 .cpf dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .cpf dd.hl { color: var(--accent); font-weight: 700; }
 .chip { display: inline-block; font: 700 10px var(--font-body); letter-spacing: 0.05em; color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; margin-left: 6px; white-space: nowrap; }
-.cpf dt .chip.today { color: var(--accent); border-color: var(--accent); }
+.chip.today { color: var(--accent); border-color: var(--accent); }
 
 .tablewrap { overflow-x: auto; margin: 0 -4px; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -241,7 +241,7 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
 
       <section class="card">
         <h2>CPF projection, no new contributions</h2>
-        <p class="lede"><span id="cpf-rates"></span> At 55, SA then OA form the Retirement Account, up to that year's Full Retirement Sum. Every group is tagged with the year its dollars are worth: <span class="chip">2051&nbsp;$</span> means 2051 dollars, <span class="chip">future&nbsp;$</span> means the year each transfer happens, <span class="chip today">today&nbsp;$</span> means money in your pocket today.</p>
+        <p class="lede"><span id="cpf-rates"></span> At 55, SA then OA form the Retirement Account, up to that year's Full Retirement Sum. Every figure is tagged with the year its dollars are worth: <span class="chip">2051&nbsp;$</span> means 2051 dollars, <span class="chip today" id="chip-now">today&nbsp;$</span> means money in your pocket today.</p>
         <div class="cpfgrid">
           <div class="cpf" style="border-top-color:var(--s1)"><h3><i style="background:var(--s1)"></i>Me</h3><dl id="cpf-you"></dl></div>
           <div class="cpf" style="border-top-color:var(--s2)"><h3><i style="background:var(--s2)"></i>Wife</h3><dl id="cpf-wife"></dl></div>
@@ -383,6 +383,7 @@ function render() {
   save();
   document.getElementById('yr').textContent = baseYear;
   document.getElementById('yr').setAttribute('aria-label', 'Figures as of ' + baseYear);
+  document.getElementById('chip-now').textContent = baseYear + ' $';
   document.getElementById('ages-now').textContent = `${inputs.you.age} / ${inputs.wife.age}`;
   document.getElementById('u-today').setAttribute('aria-pressed', displayUnit === 'today');
   document.getElementById('u-future').setAttribute('aria-pressed', displayUnit === 'future');
@@ -485,44 +486,45 @@ function renderPost() {
   document.getElementById('t-post').innerHTML = tableHtml + '</tbody>';
 }
 
-// The CPF projection card for each person: groups tagged with the year its dollars
-// are worth, so future sums are never mistaken for today's.
+// The CPF projection card for each person: every figure tagged with the year its
+// dollars are worth, so future sums are never mistaken for today's.
 function renderCPF() {
   document.getElementById('cpf-rates').textContent =
     `Balances earn CPF interest only (OA ${cpfRules.interest.ordinaryAccountPct}%, SA/RA/MA ${cpfRules.interest.specialAccountPct}%, plus extra on the first $${cpfRules.extraInterest.beforeRaFormation.reduce((total, tier) => total + tier.tierBalance, 0).toLocaleString('en-SG')}).`;
 
-  const chip = (text, isToday) => ` <span class="chip${isToday ? ' today' : ''}">${text}</span>`;
+  const chip = year => ` <span class="chip${year === baseYear ? ' today' : ''}">${year} $</span>`;
   const buildBlock = (personResult, person) => {
     const lines = [];
-    const pushValue = (label, value, cssClass = '', chipText = null) =>
-      lines.push(`<dt>${label}${chipText ? chip(chipText, true) : ''}</dt><dd class="${cssClass}">${value}</dd>`);
-    const pushGroup = (heading, chipText) => lines.push(`<dt class="grp">${heading}${chipText ? chip(chipText) : ''}</dt>`);
+    const pushValue = (label, value, year, cssClass = '') =>
+      lines.push(`<dt>${label}</dt><dd class="${cssClass}">${value}${chip(year)}</dd>`);
+    const pushGroup = heading => lines.push(`<dt class="grp">${heading}</dt>`);
+    const topUpYear = person.age < raFormationAge ? personResult.yearAt55 : baseYear;
 
     if (inputs.optOA && person.age < raFormationAge) {
-      pushGroup('Before 55', 'future $');
-      pushValue('OA moved into own SA', dollars(personResult.oaTransferredToOwnSpecial));
-      if (personResult.oaGivenToSpouse > 0) pushValue("OA moved to spouse's SA", dollars(personResult.oaGivenToSpouse));
-      if (personResult.oaReceivedFromSpouse > 0) pushValue("Received from spouse's OA", dollars(personResult.oaReceivedFromSpouse));
+      pushGroup('Before 55');
+      pushValue('OA moved into own SA', dollars(personResult.oaTransferredToOwnSpecial), baseYear);
+      if (personResult.oaGivenToSpouse > 0) pushValue("OA moved to spouse's SA", dollars(personResult.oaGivenToSpouse), baseYear);
+      if (personResult.oaReceivedFromSpouse > 0) pushValue("Received from spouse's OA", dollars(personResult.oaReceivedFromSpouse), baseYear);
     }
-    pushGroup(person.age < raFormationAge ? `At 55 (${personResult.yearAt55})` : 'Now',
-      person.age < raFormationAge ? `${personResult.yearAt55} $` : `${baseYear} $`);
-    if (person.age < raFormationAge) pushValue('Full Retirement Sum that year', dollars(personResult.frsAt55));
-    pushValue(person.age < raFormationAge ? 'RA formed from SA and OA' : 'RA today', dollars(personResult.raAtFormation || 0));
+    pushGroup(person.age < raFormationAge ? `At 55 (${personResult.yearAt55})` : 'Now');
+    if (person.age < raFormationAge) pushValue('Full Retirement Sum that year', dollars(personResult.frsAt55), personResult.yearAt55);
+    pushValue(person.age < raFormationAge ? 'RA formed from SA and OA' : 'RA today', dollars(personResult.raAtFormation || 0), topUpYear);
     if (inputs.ers) {
-      pushValue('Enhanced Retirement Sum that year', dollars(personResult.ersAt55 || 0));
-      pushValue('Top-up from OA', dollars(personResult.oaUsedForErsTopUp));
-      pushValue('Top-up in cash', dollars(personResult.cashUsedForErsTopUp), 'hl');
+      pushValue('Enhanced Retirement Sum that year', dollars(personResult.ersAt55 || 0), topUpYear);
+      pushValue('Top-up from OA', dollars(personResult.oaUsedForErsTopUp), topUpYear);
+      pushValue('Top-up in cash', dollars(personResult.cashUsedForErsTopUp), topUpYear, 'hl');
     }
-    pushGroup(`At ${lifeReferenceAge} (${personResult.yearAtReferenceAge})`, `${personResult.yearAtReferenceAge} $`);
-    pushValue('RA balance', dollars(personResult.raAtReferenceAge || 0));
-    pushValue(`CPF LIFE from ${inputs.startAge}, per month`, dollars(personResult.monthlyPayoutAtStart));
-    pushValue(`In ${baseYear} dollars`,
+    pushGroup(`At ${lifeReferenceAge} (${personResult.yearAtReferenceAge})`);
+    pushValue('RA balance', dollars(personResult.raAtReferenceAge || 0), personResult.yearAtReferenceAge);
+    pushValue(`CPF LIFE from ${inputs.startAge}, per month`, dollars(personResult.monthlyPayoutAtStart),
+      personResult.yearAtReferenceAge + inputs.startAge - lifeReferenceAge);
+    pushValue("In today's dollars",
       dollars(personResult.payoutStartYear ? personResult.monthlyPayoutAtStart / planResult.deflate(personResult.payoutStartYear) : 0),
-      'hl', `${baseYear} $`);
+      baseYear, 'hl');
     if (inputs.countOA) {
-      pushGroup(personResult.oaSpentYear ? `At retirement (${personResult.oaSpentYear})` : 'At retirement',
-        personResult.oaSpentYear ? `${personResult.oaSpentYear} $` : 'future $');
-      pushValue('OA left to spend', dollars(personResult.oaSpentAtRetirement));
+      const spendYear = personResult.oaSpentYear || planResult.retirementYear;
+      pushGroup(`At retirement (${spendYear})`);
+      pushValue('OA left to spend', dollars(personResult.oaSpentAtRetirement), spendYear);
     }
     return lines.join('');
   };

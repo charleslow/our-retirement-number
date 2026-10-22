@@ -241,6 +241,8 @@ function createModel(cpfRules, cpfLife, options) {
   // 1. Form RAs at 55 and apply the optional ERS top-up.
   // 2. Run the optional OA-to-SA transfers.
   // 3. Pay CPF LIFE, spend leftover OA at retirement, and credit a year of interest.
+  // CPF LIFE payouts run for both lives to the household horizon, not each person's
+  // own death age; interest and the OA spend still stop at that death age.
   function advanceOneYear(people, ages, input, retirementYear, year) {
     const yearSums = yearlyRetirementSums(year, input.rsGrowth);
 
@@ -261,9 +263,11 @@ function createModel(cpfRules, cpfLife, options) {
 
     people.forEach((person, personIndex) => {
       const age = ages[personIndex];
-      if (age >= input.deathAge) return;
-      if (age >= lifeReferenceAge && !person.lifeLockedIn) lockInLifePayout(person, input);
+      if (age < input.deathAge && age >= lifeReferenceAge && !person.lifeLockedIn) {
+        lockInLifePayout(person, input);
+      }
       recordYearlyPayout(person, age, input, year);
+      if (age >= input.deathAge) return;
       spendLeftoverOrdinary(person, age, input, retirementYear, year);
       creditInterest(person);
     });
