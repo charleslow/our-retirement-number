@@ -1,5 +1,5 @@
 // Golden parity test: pins baseYear so it passes in any calendar year.
-// Run: node test.js
+// Run: npm test (builds first, then runs this file).
 // If a figure change (update.md) intentionally moves these numbers, refresh the
 // golden values below and say so in the PR.
 'use strict';
@@ -9,20 +9,29 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const DATA = require('./data.js');
-const { createModel } = require('./model.js');
+
+// The model runs from the built bundles, so build before testing.
+function loadBuilt(file) {
+  if (!fs.existsSync(path.join(__dirname, file))) {
+    console.error('Missing ' + file + ' - build first: npm run build');
+    process.exit(1);
+  }
+  return require('./' + file);
+}
+const { createModel } = loadBuilt('build/model.cjs');
 
 const model = createModel(DATA.cpfRules, DATA.cpfLife, { baseYear: 2026 });
 
 const baseInput = {
   target: 6000, retireAge: 65, deathAge: 90, inflation: 0.025, rPost: 0.03, rsGrowth: 0.035,
-  startAge: 65, plan: 'standard', countOA: true, optOA: false, ers: true,
+  startAge: 65, plan: 'standard', countOA: true, optOaToSaTopUp: false, optErsTopUp: true,
   you: { age: 45, oa: 120000, sa: 150000, ma: 70000 },
   wife: { age: 43, oa: 80000, sa: 100000, ma: 60000 },
 };
 
 const round2 = value => Math.round(value * 100) / 100;
 
-// Map the new result shape onto the golden values captured from the pre-refactor model.
+// Map the result shape onto the golden values captured from the pre-refactor model.
 function summarise(result) {
   const pickRow = row => ({
     y: row.year, ageYou: row.ageYou, ageWife: row.ageWife, need: round2(row.need),
@@ -74,7 +83,7 @@ const golden = {
     pot: 960034.9, potToday: 585881.41, totalToday: 1062429.75,
     you: { monthlyStart: 3745.18 }, wife: { monthlyStart: 3808.39 },
   },
-  optOA: {
+  optOaToSaTopUp: {
     cash55Today: 442609.28, totalToday: 992777.96,
     cash55: [{ nominal: 276800.07, today: 216235.77, y: 2036 }, { nominal: 304447.19, today: 226373.5, y: 2038 }],
     you: { cashTopUp: 276800.07, oaToOwnSA: 70400 },
@@ -103,18 +112,26 @@ function check(name, actual, expected) {
 const standard = summarise(model.plan(baseInput));
 check('base scenario', standard, golden.base);
 
+// The browser bundle must expose the same model via window.RetirementModel and
+// produce the same numbers as the Node build.
+const sandbox = { window: {} };
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'dist/model.js'), 'utf8'), sandbox);
+const browserGlobal = sandbox.window.RetirementModel || sandbox.RetirementModel;
+const browserModel = browserGlobal.createModel(DATA.cpfRules, DATA.cpfLife, { baseYear: 2026 });
+check('browser bundle parity', round2(browserModel.plan(baseInput).savingsAtRetirement), golden.base.pot);
+
 const escalating = summarise(model.plan({ ...baseInput, plan: 'escalating' }));
 check('escalating scenario', {
   pot: escalating.pot, potToday: escalating.potToday, totalToday: escalating.totalToday,
   you: { monthlyStart: escalating.you.monthlyStart }, wife: { monthlyStart: escalating.wife.monthlyStart },
 }, golden.escalating);
 
-const optOA = summarise(model.plan({ ...baseInput, optOA: true }));
-check('optOA scenario', {
-  cash55Today: optOA.cash55Today, totalToday: optOA.totalToday, cash55: optOA.cash55,
-  you: { cashTopUp: optOA.you.cashTopUp, oaToOwnSA: optOA.you.oaToOwnSA },
-  wife: { cashTopUp: optOA.wife.cashTopUp },
-}, golden.optOA);
+const optOaToSaTopUp = summarise(model.plan({ ...baseInput, optOaToSaTopUp: true }));
+check('optOaToSaTopUp scenario', {
+  cash55Today: optOaToSaTopUp.cash55Today, totalToday: optOaToSaTopUp.totalToday, cash55: optOaToSaTopUp.cash55,
+  you: { cashTopUp: optOaToSaTopUp.you.cashTopUp, oaToOwnSA: optOaToSaTopUp.you.oaToOwnSA },
+  wife: { cashTopUp: optOaToSaTopUp.wife.cashTopUp },
+}, golden.optOaToSaTopUp);
 
 const deferredTo70 = summarise(model.plan({ ...baseInput, startAge: 70 }));
 check('deferred-to-70 scenario', {

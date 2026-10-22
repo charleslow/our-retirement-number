@@ -1,15 +1,16 @@
 # Updating the yearly figures
 
 Every figure lives in `data.js`, annotated by section. Nothing is hardcoded in
-`model.js` or `index.html`.
+`src/` or `index.html`.
 
 ## Workflow (every update)
 
 1. Edit the relevant sections of `data.js`.
-2. `node test.js` - must pass. It pins the base year, so it behaves the same in any
+2. `npm test` - must pass. It pins the base year, so it behaves the same in any
    calendar year. If the new figures intentionally move results, refresh the golden
    numbers in `test.js` and call that out in the PR.
-3. Open `index.html` in a browser and sanity-check the headline numbers.
+3. `npm run build:site`, then open `dist/index.html` in a browser and sanity-check
+   the headline numbers.
 4. One commit / PR with the `data.js` edit. CI runs the tests.
 
 ## It is 2030 - what to check
@@ -48,5 +49,5 @@ Source: cpf.gov.sg - CPF LIFE payout table and the Retirement Payout Planner.
 
 ## Leave alone
 
-- `model.js` and `index.html` logic - touch only if a CPF rule itself changed, not just
+- `src/` and `index.html` logic - touch only if a CPF rule itself changed, not just
   the values.
