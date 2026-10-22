@@ -81,8 +81,8 @@ const golden = {
     wife: { cashTopUp: 304447.19 },
   },
   deferredTo70: {
-    pot: 911020.86, potToday: 555969.56, totalToday: 1032517.9,
-    you: { monthlyStart: 6464.62 }, wife: { monthlyStart: 6573.73 },
+    pot: 912804.65, potToday: 557058.16, totalToday: 1033606.51,
+    you: { monthlyStart: 6459.08 }, wife: { monthlyStart: 6568.1 },
     firstRow: { cYou: 0, cWife: 0, gap: 117980.38 },
   },
   retirementSums: { frs2026: 220400, frs2027: 228200, frs2030: 253009.42, brs2026: 110200, ers2026: 440800 },
@@ -138,10 +138,11 @@ check('LIFE payout table points and interpolation',
 
 check('data.js wiring', {
   lifeTableRows: DATA.cpfLife.table.points.length,
+  deferralPayouts: DATA.cpfLife.deferralPayouts.length,
   announcedSums: DATA.cpfRules.retirementSums.announced.length,
   defaultTarget: DATA.defaults.target,
   defaultAgeNow: DATA.defaultAgeNow,
-}, { lifeTableRows: 6, announcedSums: 2, defaultTarget: 6000, defaultAgeNow: { me: 45, wife: 43 } });
+}, { lifeTableRows: 6, deferralPayouts: 2, announcedSums: 2, defaultTarget: 6000, defaultAgeNow: { me: 45, wife: 43 } });
 
 // Compile (not run) the page's inline script to catch syntax errors; CI has no browser.
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');

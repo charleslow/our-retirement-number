@@ -23,7 +23,13 @@ function createModel(cpfRules, cpfLife, options) {
   // payout-per-dollar of RA balance so interpolation stays proportional.
   const lifeTablePoints = cpfLife.table.points.map(point => [point.raBalance, point.monthlyPayout]);
   const femalePayoutFactor = 1 - cpfLife.adjustments.femaleDiscountPct / 100;
-  const deferralFactorPerYear = 1 + cpfLife.adjustments.deferralUpliftPctPerYear / 100;
+  // Per-year deferral uplift, derived from CPF's published payout pair across start ages.
+  const firstDeferralPayout = cpfLife.deferralPayouts[0];
+  const lastDeferralPayout = cpfLife.deferralPayouts[cpfLife.deferralPayouts.length - 1];
+  const deferralFactorPerYear = Math.pow(
+    lastDeferralPayout.monthlyPayout / firstDeferralPayout.monthlyPayout,
+    1 / (lastDeferralPayout.startAge - firstDeferralPayout.startAge),
+  );
   const tableCalibrationFactor = cpfLife.adjustments.tableCalibrationFactor;
   const escalatingStartRatio = cpfLife.escalatingPlan.escalatingFrsMonthly
     / cpfLife.escalatingPlan.standardFrsMonthly;
