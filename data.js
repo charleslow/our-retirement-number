@@ -89,11 +89,18 @@ const DATA = {
     },
 
     adjustments: {
-      femaleDiscountPct: 5,        // women's payouts are about this much lower
-      deferralUpliftPctPerYear: 6, // payout rise per year of deferral past the reference age
+      femaleDiscountPct: 5, // women's payouts are about this much lower
       // Aligns the interpolated table with CPF's published FRS/ERS payout examples.
       tableCalibrationFactor: 0.98,
     },
+
+    // Deferral uplift: CPF's published Standard Plan payouts for the same member
+    // (same RA balance) at two start ages. The model derives the per-year uplift
+    // from this pair (source: cpf.gov.sg LIFE payout table).
+    deferralPayouts: [
+      { startAge: 65, monthlyPayout: 1780 },
+      { startAge: 70, monthlyPayout: 2380 },
+    ],
 
     escalatingPlan: {
       // From the same publication, at the FRS balance.

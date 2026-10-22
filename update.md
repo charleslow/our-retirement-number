@@ -31,9 +31,11 @@ Source: cpf.gov.sg - retirement sums page and interest rate pages.
   (RA balance and monthly payout).
 - `escalatingPlan`: copy both FRS-balance payouts (Standard and Escalating) from the
   same publication; confirm `annualIncreasePct` (2).
-- `adjustments`: confirm `femaleDiscountPct` (about 5) and `deferralUpliftPctPerYear`
-  (about 6). Re-derive `tableCalibrationFactor` if the published FRS payout no longer
-  equals the interpolated table value times this factor.
+- `adjustments`: confirm `femaleDiscountPct` (about 5). Re-derive `tableCalibrationFactor`
+  if the published FRS payout no longer equals the interpolated table value times this factor.
+- `deferralPayouts`: copy the published Standard Plan payout for the same member (same
+  RA balance) at two start ages (65 and 70); the model derives the per-year uplift from
+  the pair.
 - If the table year changed, update `table.year` here and the "2026" mention in
   `README.md`.
 
