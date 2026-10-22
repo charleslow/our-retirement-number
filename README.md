@@ -60,7 +60,7 @@ Edit `data.js`, run `npm test`, commit. `update.md` has the yearly checklist.
 
 - CPF interest and extra-interest tiers: `cpfRules.interest` and `cpfRules.extraInterest` in `data.js`.
 - Retirement sums: `cpfRules.retirementSums` in `data.js` - announced FRS entries; years beyond them grow at the form's growth rate. BRS = FRS / 2, ERS = 2 x FRS.
-- CPF LIFE payouts: `cpfLife` in `data.js` - Standard Plan table (male, payout from 65). Women's payouts are about 5% lower, deferral adds about 6% a year, and the Escalating Plan starts lower and rises 2% a year.
+- CPF LIFE payouts: `cpfLife` in `data.js` - Standard Plan table (male, payout from 65). Women's payouts are about 5% lower, deferral adds about 6% a year (derived from CPF's published payouts at 65 and 70), and the Escalating Plan starts lower and rises 2% a year.
 - Spending stays the same after one spouse dies.
 
 This is a planning estimate, not financial advice.

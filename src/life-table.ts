@@ -18,7 +18,13 @@ export class CpfLifeTable {
     }));
     this.calibrationFactor = data.adjustments.tableCalibrationFactor;
     this.femalePayoutFactor = 1 - data.adjustments.femaleDiscountPct / 100;
-    this.deferralUpliftPerYear = 1 + data.adjustments.deferralUpliftPctPerYear / 100;
+    // Per-year deferral uplift, derived from CPF's published payout pair across start ages.
+    const firstDeferralPayout = data.deferralPayouts[0];
+    const lastDeferralPayout = data.deferralPayouts[data.deferralPayouts.length - 1];
+    this.deferralUpliftPerYear = Math.pow(
+      lastDeferralPayout.monthlyPayout / firstDeferralPayout.monthlyPayout,
+      1 / (lastDeferralPayout.startAge - firstDeferralPayout.startAge),
+    );
     this.escalatingStartRatio = data.escalatingPlan.escalatingFrsMonthly
       / data.escalatingPlan.standardFrsMonthly;
   }

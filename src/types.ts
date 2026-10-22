@@ -31,9 +31,11 @@ export interface CpfLifeData {
   };
   adjustments: {
     femaleDiscountPct: number;
-    deferralUpliftPctPerYear: number;
     tableCalibrationFactor: number;
   };
+  // Published Standard Plan payouts for the same member (same RA balance) at
+  // two start ages; the model derives the per-year deferral uplift from the pair.
+  deferralPayouts: { startAge: number; monthlyPayout: number }[];
   escalatingPlan: {
     standardFrsMonthly: number;
     escalatingFrsMonthly: number;
