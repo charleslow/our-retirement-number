@@ -94,6 +94,11 @@ const golden = {
     you: { monthlyStart: 6459.08 }, wife: { monthlyStart: 6568.1 },
     firstRow: { cYou: 0, cWife: 0, gap: 117980.38 },
   },
+  // Wife is the older spouse: the household retires when SHE reaches retireAge.
+  wifeOlder: {
+    yRet: 2046, pot: 903778.31, potToday: 551549.64,
+    firstRow: { y: 2046, ageYou: 63, ageWife: 65, cYou: 0, cWife: 55070.42, gap: 62909.96 },
+  },
   retirementSums: { frs2026: 220400, frs2027: 228200, frs2030: 253009.42, brs2026: 110200, ers2026: 440800 },
   payouts: [490, 950, 1106.63, 1250, 1780, 2380, 3440, 4233.19],
 };
@@ -139,6 +144,15 @@ check('deferred-to-70 scenario', {
   you: { monthlyStart: deferredTo70.you.monthlyStart }, wife: { monthlyStart: deferredTo70.wife.monthlyStart },
   firstRow: { cYou: deferredTo70.firstRow.cYou, cWife: deferredTo70.firstRow.cWife, gap: deferredTo70.firstRow.gap },
 }, golden.deferredTo70);
+
+const wifeOlder = summarise(model.plan({ ...baseInput, you: { ...baseInput.you, age: 43 }, wife: { ...baseInput.wife, age: 45 } }));
+check('wife-older scenario', {
+  yRet: wifeOlder.yRet, pot: wifeOlder.pot, potToday: wifeOlder.potToday,
+  firstRow: {
+    y: wifeOlder.firstRow.y, ageYou: wifeOlder.firstRow.ageYou, ageWife: wifeOlder.firstRow.ageWife,
+    cYou: wifeOlder.firstRow.cYou, cWife: wifeOlder.firstRow.cWife, gap: wifeOlder.firstRow.gap,
+  },
+}, golden.wifeOlder);
 
 check('retirement sums', {
   frs2026: round2(model.retirementSum('FRS', 2026, 0.035)),

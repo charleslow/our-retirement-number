@@ -48,7 +48,9 @@ export function createModel(
   // The whole model: simulate every year from now until the plan ends, then
   // work out the smallest savings pot that covers the retirement shortfalls.
   function plan(input: PlanInput): PlanResult {
-    const retirementYear = baseYear + Math.max(0, input.retireAge - input.you.age);
+    // The household retires together, when the older spouse reaches retireAge.
+    const olderAge = Math.max(input.you.age, input.wife.age);
+    const retirementYear = baseYear + Math.max(0, input.retireAge - olderAge);
     const yearEnding = baseYear + Math.max(input.deathAge - input.you.age, input.deathAge - input.wife.age); // exclusive
     const deflate = (year: number) => Math.pow(1 + input.inflation, year - baseYear);
 
