@@ -501,7 +501,13 @@ function renderCPF() {
     `Balances earn CPF interest only (OA ${cpfRules.interest.ordinaryAccountPct}%, SA/RA/MA ${cpfRules.interest.specialAccountPct}%, plus extra on the first $${cpfRules.extraInterest.beforeRaFormation.reduce((total, tier) => total + tier.tierBalance, 0).toLocaleString('en-SG')}).`;
 
   const chip = year => ` <span class="chip${year === baseYear ? ' today' : ''}">${year} $</span>`;
-  const buildBlock = (personResult, person) => {
+  // The household savings pot split half each, so the two per-person lines add
+  // up to the headline figure; the wife's share absorbs the rounding remainder.
+  const savingsTotal = displayUnit === 'today' ? planResult.savingsAtRetirementToday : planResult.savingsAtRetirement;
+  const savingsMe = Math.round(savingsTotal / 2);
+  const savingsWife = Math.round(savingsTotal) - savingsMe;
+  const savingsYear = displayUnit === 'today' ? baseYear : planResult.retirementYear;
+  const buildBlock = (personResult, person, savingsShare) => {
     const lines = [];
     const pushValue = (label, value, year, cssClass = '') =>
       lines.push(`<dt>${label}</dt><dd class="${cssClass}">${value}${chip(year)}</dd>`);
@@ -523,21 +529,16 @@ function renderCPF() {
       pushValue('Top-up in cash', dollars(personResult.cashUsedForErsTopUp), topUpYear, 'hl');
     }
     pushGroup(`At ${lifeReferenceAge} (${personResult.yearAtReferenceAge})`);
-    pushValue('RA balance', dollars(personResult.raAtReferenceAge || 0), personResult.yearAtReferenceAge);
     pushValue(`CPF LIFE from ${inputs.startAge}, per month`, dollars(personResult.monthlyPayoutAtStart),
       personResult.yearAtReferenceAge + inputs.startAge - lifeReferenceAge);
     pushValue("In today's dollars",
       dollars(personResult.payoutStartYear ? personResult.monthlyPayoutAtStart / planResult.deflate(personResult.payoutStartYear) : 0),
       baseYear, 'hl');
-    if (inputs.countOA) {
-      const spendYear = personResult.oaSpentYear || planResult.retirementYear;
-      pushGroup(`At retirement (${spendYear})`);
-      pushValue('OA left to spend', dollars(personResult.oaSpentAtRetirement), spendYear);
-    }
+    pushValue(`Cash savings needed at ${inputs.retireAge}`, dollars(savingsShare), savingsYear);
     return lines.join('');
   };
-  document.getElementById('cpf-you').innerHTML = buildBlock(planResult.you, inputs.you);
-  document.getElementById('cpf-wife').innerHTML = buildBlock(planResult.wife, inputs.wife);
+  document.getElementById('cpf-you').innerHTML = buildBlock(planResult.you, inputs.you, savingsMe);
+  document.getElementById('cpf-wife').innerHTML = buildBlock(planResult.wife, inputs.wife, savingsWife);
 }
 
 /* ---------- chart ---------- */
