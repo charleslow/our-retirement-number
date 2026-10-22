@@ -193,11 +193,11 @@ summary { cursor: pointer; font-weight: 700; color: var(--accent); font-size: 15
           <p class="effect" id="fx-plan"></p>
         </div>
         <div class="strat">
-          <label class="tg" for="optOA"><span><span class="t">Move spare OA into SA</span><small>Until 55, fill your SA up to the current Full Retirement Sum, then your spouse's. Keep out OA needed for housing; transfers can't be undone.</small></span><span class="sw"><input id="optOA" type="checkbox" role="switch"><span></span></span></label>
+          <label class="tg" for="optOaToSaTopUp"><span><span class="t">Move spare OA into SA</span><small>Until 55, fill your SA up to the current Full Retirement Sum, then your spouse's. Keep out OA needed for housing; transfers can't be undone.</small></span><span class="sw"><input id="optOaToSaTopUp" type="checkbox" role="switch"><span></span></span></label>
           <p class="effect" id="fx-opt"></p>
         </div>
         <div class="strat">
-          <label class="tg" for="ers"><span><span class="t">Top up RA to the ERS at 55</span><small>At each 55, fill the RA to that year's Enhanced Retirement Sum: OA first, then cash.</small></span><span class="sw"><input id="ers" type="checkbox" role="switch"><span></span></span></label>
+          <label class="tg" for="optErsTopUp"><span><span class="t">Top up RA to the ERS at 55</span><small>At each 55, fill the RA to that year's Enhanced Retirement Sum: OA first, then cash.</small></span><span class="sw"><input id="optErsTopUp" type="checkbox" role="switch"><span></span></span></label>
           <p class="effect" id="fx-ers"></p>
         </div>
       </fieldset>
@@ -312,6 +312,11 @@ function load(useSaved = true) {
     } catch (error) {}
   }
   savedValues = savedValues || {};
+  // v2 saves stored the strategy switches under their old names.
+  for (const [oldId, newId] of [['optOA', 'optOaToSaTopUp'], ['ers', 'optErsTopUp']]) {
+    if (oldId in savedValues && !(newId in savedValues)) savedValues[newId] = savedValues[oldId];
+    delete savedValues[oldId];
+  }
   // Old saves stored ages; keep them as birth years.
   for (const key of ['y-age', 'w-age']) {
     if (savedValues[key] != null) {
@@ -345,7 +350,7 @@ function readInputs() {
     rsGrowth: num('rsGrowth') / 100,
     startAge: parseInt(document.getElementById('startAge').value, 10),
     plan: getVal('plan'),
-    countOA: getVal('countOA'), optOA: getVal('optOA'), ers: getVal('ers'),
+    countOA: getVal('countOA'), optOaToSaTopUp: getVal('optOaToSaTopUp'), optErsTopUp: getVal('optErsTopUp'),
     you: {
       age: baseYear - clampBirthYear(num('y-yob', defaultValues['y-yob'])),
       oa: Math.max(0, num('y-oa')), sa: Math.max(0, num('y-sa')), ma: Math.max(0, num('y-ma')),
@@ -391,7 +396,7 @@ function render() {
   // Headline 1: ERS top-up cash at 55
   const ersCard = document.getElementById('hb-ers');
   const ersSplit = document.getElementById('ers-split');
-  if (inputs.ers) {
+  if (inputs.optErsTopUp) {
     ersCard.classList.remove('off');
     const topUpValue = topUp => displayUnit === 'today' ? topUp.todayDollars : topUp.nominal;
     const meTopUp = planResult.ersTopUpByPerson[0], wifeTopUp = planResult.ersTopUpByPerson[1];
@@ -420,7 +425,7 @@ function render() {
   document.getElementById('ret-note').textContent =
     `In ${unitLabel()}; ${otherUnit}. Funds ${dollars(inputs.target)} a month in today's money until ${planResult.yearEnding - 1}, on top of CPF LIFE${inputs.countOA ? ' and leftover OA' : ''}.`;
 
-  document.getElementById('total-line').innerHTML = inputs.ers
+  document.getElementById('total-line').innerHTML = inputs.optErsTopUp
     ? `Total to build: <b>${dollars(planResult.totalToday)}</b> in today's dollars (${dollars(planResult.ersTopUpToday)} ERS top-ups, ${dollars(planResult.savingsAtRetirementToday)} at retirement).`
     : `Total to build: <b>${dollars(planResult.totalToday)}</b> in today's dollars, all at retirement.`;
 
@@ -441,14 +446,14 @@ function renderEffects() {
   document.getElementById('fx-plan').innerHTML =
     `Escalating vs Standard: savings at retirement ${describeChange(escalatingRun.savingsAtRetirementToday - standardRun.savingsAtRetirementToday)}. Starts lower, rises ${escalatingPct}% a year.`;
 
-  const withTransfer = scenario(runInputs => { runInputs.optOA = true; });
-  const withoutTransfer = scenario(runInputs => { runInputs.optOA = false; });
+  const withTransfer = scenario(runInputs => { runInputs.optOaToSaTopUp = true; });
+  const withoutTransfer = scenario(runInputs => { runInputs.optOaToSaTopUp = false; });
   let transferEffect = `Savings at retirement ${describeChange(withTransfer.savingsAtRetirementToday - withoutTransfer.savingsAtRetirementToday)}`;
-  if (inputs.ers) transferEffect += `, ERS top-up cash ${describeChange(withTransfer.ersTopUpToday - withoutTransfer.ersTopUpToday)}`;
+  if (inputs.optErsTopUp) transferEffect += `, ERS top-up cash ${describeChange(withTransfer.ersTopUpToday - withoutTransfer.ersTopUpToday)}`;
   document.getElementById('fx-opt').innerHTML = transferEffect + `. Today's dollars.`;
 
-  const withTopUp = scenario(runInputs => { runInputs.ers = true; });
-  const withoutTopUp = scenario(runInputs => { runInputs.ers = false; });
+  const withTopUp = scenario(runInputs => { runInputs.optErsTopUp = true; });
+  const withoutTopUp = scenario(runInputs => { runInputs.optErsTopUp = false; });
   document.getElementById('fx-ers').innerHTML =
     `Savings at retirement ${describeChange(withTopUp.savingsAtRetirementToday - withoutTopUp.savingsAtRetirementToday)}, but ${dollars(withTopUp.ersTopUpToday)} cash needed at 55. Total cash ${describeChange(withTopUp.totalToday - withoutTopUp.totalToday)}. Today's dollars.`;
 }
@@ -500,7 +505,7 @@ function renderCPF() {
     const pushGroup = heading => lines.push(`<dt class="grp">${heading}</dt>`);
     const topUpYear = person.age < raFormationAge ? personResult.yearAt55 : baseYear;
 
-    if (inputs.optOA && person.age < raFormationAge) {
+    if (inputs.optOaToSaTopUp && person.age < raFormationAge) {
       pushGroup('Before 55');
       pushValue('OA moved into own SA', dollars(personResult.oaTransferredToOwnSpecial), baseYear);
       if (personResult.oaGivenToSpouse > 0) pushValue("OA moved to spouse's SA", dollars(personResult.oaGivenToSpouse), baseYear);
@@ -509,7 +514,7 @@ function renderCPF() {
     pushGroup(person.age < raFormationAge ? `At 55 (${personResult.yearAt55})` : 'Now');
     if (person.age < raFormationAge) pushValue('Full Retirement Sum that year', dollars(personResult.frsAt55), personResult.yearAt55);
     pushValue(person.age < raFormationAge ? 'RA formed from SA and OA' : 'RA today', dollars(personResult.raAtFormation || 0), topUpYear);
-    if (inputs.ers) {
+    if (inputs.optErsTopUp) {
       pushValue('Enhanced Retirement Sum that year', dollars(personResult.ersAt55 || 0), topUpYear);
       pushValue('Top-up from OA', dollars(personResult.oaUsedForErsTopUp), topUpYear);
       pushValue('Top-up in cash', dollars(personResult.cashUsedForErsTopUp), topUpYear, 'hl');

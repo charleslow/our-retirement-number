@@ -1,6 +1,6 @@
 // Every yearly figure in the app lives in this file. Nothing is hardcoded in
-// model.js or index.html. See update.md for the yearly refresh checklist.
-// After any edit, run: node test.js
+// src/ or index.html. See update.md for the yearly refresh checklist.
+// After any edit, run: npm test
 'use strict';
 
 const DATA = {
@@ -21,8 +21,8 @@ const DATA = {
     'w-sa': 100000,
     'w-ma': 60000,
     plan: 'standard',   // standard | escalating
-    optOA: false,       // move spare OA into SA each year
-    ers: true,          // top the RA up to the ERS at 55
+    optOaToSaTopUp: false, // move spare OA into SA each year
+    optErsTopUp: true,  // top the RA up to the ERS at 55
     startAge: 65,       // CPF LIFE payouts start age, 65 to 70
     rsGrowth: 3.5,      // percent per year: FRS growth after the last announced year
     countOA: true,      // spend leftover OA in retirement
